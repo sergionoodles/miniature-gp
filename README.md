@@ -1,6 +1,6 @@
-# Grand Prix Atlas
+# Miniature GP
 
-Grand Prix Atlas turns a Formula 1 race into a small, fixed-view 3D replay. Watch the cars move around the circuit, follow the running order, and explore the race at your own pace. The first replay covers the **2026 Italian Grand Prix at Monza**.
+Miniature GP turns a Formula 1 race into a small, fixed-view 3D replay. Watch the cars move around the circuit, follow the running order, and explore the race at your own pace. The first replay covers the **2026 Italian Grand Prix at Monza**.
 
 ## What you can do
 

@@ -1,6 +1,6 @@
 # Importing a circuit and race replay
 
-Use this guide when adding a circuit or a race to Grand Prix Atlas. Keep the circuit reference material, race metadata, replay file, renderer, and race picker in sync.
+Use this guide when adding a circuit or a race to Miniature GP. Keep the circuit reference material, race metadata, replay file, renderer, and race picker in sync.
 
 ## Before changing files
 

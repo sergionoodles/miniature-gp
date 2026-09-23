@@ -154,7 +154,8 @@ export default function App() {
         <div className="identity">
           <span className="identity-mark" aria-hidden="true"><span /><span /><span /></span>
           <div>
-            <div className="app-name">Grand Prix Atlas</div>
+            <div className="app-name">Miniature GP</div>
+            <div className="app-subtitle">Every race. Rebuilt in miniature.</div>
           </div>
         </div>
         <div className="race-picker" role="group" aria-label="Selected race">
