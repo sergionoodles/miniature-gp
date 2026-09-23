@@ -1,0 +1,4 @@
+interface:
+  display_name: "Three.js Debug Profiler"
+  short_description: "Debug and profile Three.js games"
+  default_prompt: "Use $threejs-debug-profiler to recommend improvements and assess available evidence within my requested scope; tools and generation are optional."

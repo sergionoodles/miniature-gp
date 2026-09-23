@@ -1,0 +1,4 @@
+interface:
+  display_name: "Three.js Audio Generator"
+  short_description: "Plan and assess Three.js sound and voice assets"
+  default_prompt: "Use $threejs-audio-generator to recommend improvements and assess available evidence within my requested scope; tools and generation are optional."

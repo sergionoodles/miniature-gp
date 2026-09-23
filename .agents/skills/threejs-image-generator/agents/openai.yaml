@@ -1,0 +1,4 @@
+interface:
+  display_name: "Three.js Image Generator"
+  short_description: "Plan and assess Three.js concepts, textures, and UI art"
+  default_prompt: "Use $threejs-image-generator to recommend improvements and assess available evidence within my requested scope; tools and generation are optional."

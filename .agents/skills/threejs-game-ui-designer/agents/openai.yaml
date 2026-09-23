@@ -1,0 +1,4 @@
+interface:
+  display_name: "Three.js Game UI Designer"
+  short_description: "Design premium Three.js game UI"
+  default_prompt: "Use $threejs-game-ui-designer to recommend improvements and assess available evidence within my requested scope; tools and generation are optional."

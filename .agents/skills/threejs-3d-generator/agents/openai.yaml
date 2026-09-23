@@ -1,0 +1,4 @@
+interface:
+  display_name: "Three.js 3D Generator"
+  short_description: "Plan and assess Three.js models, rigs, and animation"
+  default_prompt: "Use $threejs-3d-generator to recommend improvements and assess available evidence within my requested scope; tools and generation are optional."
