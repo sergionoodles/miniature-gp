@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
 import { TrackScene } from './TrackScene'
 import { carLocation, clockLabel, isReplay, lapsAt, latestAt, positionsAt, raceStatus, type Replay } from './replay'
 
@@ -9,6 +10,8 @@ const RACES = {
 const SPEEDS = [1, 2, 5, 10, 30, 60, 120]
 
 export default function App() {
+  const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
+  const [carMode, setCarMode] = useState<'cars' | 'dots'>('cars')
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
   const [raceId, setRaceId] = useState<keyof typeof RACES>('netherlands')
   const race = RACES[raceId]
@@ -50,6 +53,7 @@ export default function App() {
     setReplay(null)
     setError(null)
     setSelectedDriver(null)
+    setHoveredDriver(null)
     setRaceId(nextRaceId)
   }
 
@@ -106,12 +110,14 @@ export default function App() {
       .sort((first, second) => first.position - second.position)
   }, [replay, time])
 
+  const stops = useMemo(() => replay ? detectStoppedCars(replay) : new Map<number, StoppedInterval[]>(), [replay])
   const weather = replay ? latestAt(replay.weather, time) : null
   const status = replay ? raceStatus(replay.raceControl, time) : 'Loading'
   const leaderLap = order[0]?.lap ?? 1
   const lastPit = replay ? latestAt(replay.pits, time) : null
   const isRaining = Boolean(weather?.[1])
   const selected = order.find((driver) => driver.number === selectedDriver)
+  const isSelectedStopped = selected ? stoppedAt(stops.get(selected.number) ?? [], time) !== null : false
   const hasSelectedLocation = selected && replay ? carLocation(replay.locations[String(selected.number)] ?? [], time) !== null : false
 
   return (
@@ -142,15 +148,15 @@ export default function App() {
             </div>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
           </div>
-          <div className="order-hint">Select a driver to locate their car <span>↗</span></div>
+          <div className="order-hint">Hover to isolate · Select to locate <span>↗</span></div>
           <div className="order-list" role="region" tabIndex={0} aria-label="Running order">
             {order.map((driver) => (
-              <button type="button" className={`driver-row${selectedDriver === driver.number ? ' selected' : ''}`} key={driver.number} aria-pressed={selectedDriver === driver.number} aria-label={`Highlight ${driver.name}, ${driver.position === 99 ? 'position unavailable' : `position ${driver.position}`}, ${driver.team}, number ${driver.number}`} onClick={() => setSelectedDriver(selectedDriver === driver.number ? null : driver.number)}>
+              <button type="button" className={`driver-row${selectedDriver === driver.number ? ' selected' : ''}`} key={driver.number} aria-pressed={selectedDriver === driver.number} aria-label={`Highlight ${driver.name}, ${driver.position === 99 ? 'position unavailable' : `position ${driver.position}`}, ${driver.team}, number ${driver.number}${stoppedAt(stops.get(driver.number) ?? [], time) ? ', stopped car inferred from telemetry' : ''}`}  onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHoveredDriver(driver.number) }} onPointerLeave={() => setHoveredDriver(null)} onFocus={() => setHoveredDriver(driver.number)} onBlur={() => setHoveredDriver(null)} onClick={() => setSelectedDriver(selectedDriver === driver.number ? null : driver.number)}>
                 <span className="driver-position">{driver.position === 99 ? '–' : driver.position}</span>
                 <span className="team-marker" style={{ backgroundColor: driver.color }} />
                 <span className="driver-code">{driver.code}</span>
                 <span className="driver-name">{driver.name}<small>{driver.team}</small></span>
-                <span className="driver-number">{driver.number}</span>
+                <span className="driver-number">{stoppedAt(stops.get(driver.number) ?? [], time) ? <span className="stopped-icon" role="img" aria-label="Stopped car inferred from telemetry" title="Stopped car inferred from telemetry">♧</span> : driver.number}</span>
               </button>
             ))}
             {!replay && <div className="panel-message">{error ?? 'Loading race data…'}</div>}
@@ -159,7 +165,7 @@ export default function App() {
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay ? <TrackScene key={raceId} replay={replay} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
+          {replay ? <TrackScene key={raceId} replay={replay} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} carMode={carMode} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
           <div className="stage-topline">
             <div className="stage-title">
               <span className="stage-kicker">CIRCUIT ATLAS <i /> {raceId === 'monza' ? 'ITA' : 'NLD'} / 2026</span>
@@ -181,9 +187,10 @@ export default function App() {
             <div><span className="section-eyebrow">DRIVER IN FOCUS</span><button type="button" aria-label="Clear driver selection" onClick={() => setSelectedDriver(null)}>×</button></div>
             <strong>{selected.name} <span>#{selected.number}</span></strong>
             <p>{selected.team} · P{selected.position === 99 ? '–' : selected.position} · Lap {selected.lap}</p>
-            <small>{hasSelectedLocation ? 'Highlighted on the circuit' : 'Location unavailable at this replay time'}</small>
+            <small>{isSelectedStopped ? 'Stopped car · inferred from telemetry' : hasSelectedLocation ? 'Highlighted on the circuit' : 'Location unavailable at this replay time'}</small>
           </div>}
-          <div className="stage-bottomline"><span>Drag to orbit <b>·</b> Scroll to zoom</span><span>Schematic terrain / Recorded locations</span></div>
+          <label className="render-setting"><span>VEHICLE DISPLAY</span><span className="render-toggle"><span>Cars</span><input type="checkbox" role="switch" aria-label="Render cars as team-colored dots" checked={carMode === 'dots'} onChange={(event) => setCarMode(event.target.checked ? 'dots' : 'cars')} /><i aria-hidden="true" /><span>Dots</span></span></label>
+          <div className="stage-bottomline"><span>Drag to orbit <b>·</b> Scroll to zoom</span><span>Ghost = inferred stop · Recorded locations</span></div>
         </section>
       </main>
 

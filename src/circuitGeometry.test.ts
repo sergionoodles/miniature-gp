@@ -36,3 +36,20 @@ it('keeps the whole grandstand footprint clear of the circuit', async () => {
   expect(canPlaceStructure([new Vector3(0, 0, 5)], center, outward, 20)).toBe(false)
   expect(canPlaceStructure([new Vector3(0, 0, 10)], center, outward, 20)).toBe(true)
 })
+
+it('keeps the camera target centered in the unobscured viewport at every zoom', async () => {
+  const { frameCircuitCameraInPlace } = await import('./circuitGeometry')
+  const { OrthographicCamera } = await import('three')
+  const camera = new OrthographicCamera()
+  camera.position.set(0, 0, 100)
+  camera.lookAt(0, 0, 0)
+  camera.updateMatrixWorld()
+  frameCircuitCameraInPlace(camera, 1440, 834, 180, 110, 286)
+  for (const zoom of [1, 4, 8]) {
+    camera.zoom = zoom
+    camera.updateProjectionMatrix()
+    expect(new Vector3().project(camera).x).toBeCloseTo(286 / 1440)
+  }
+  frameCircuitCameraInPlace(camera, 390, 500, 180, 110, 0)
+  expect(new Vector3().project(camera).x).toBeCloseTo(0)
+})

@@ -55,3 +55,15 @@ export function canPlaceStructure(track: THREE.Vector3[], center: THREE.Vector3,
     return Math.abs(offset.dot(tangent)) > length / 2 + clearance || Math.abs(offset.dot(outward)) > halfDepth + clearance
   })
 }
+
+export function frameCircuitCameraInPlace(camera: THREE.OrthographicCamera, width: number, height: number, circuitWidth: number, circuitDepth: number, sidebar: number) {
+  const aspect = width / height
+  const usableAspect = (width - sidebar) / height
+  const vertical = Math.max(circuitDepth * 0.49 + 22, (circuitWidth * 0.56 + 12) / usableAspect)
+  camera.left = -vertical * aspect
+  camera.right = vertical * aspect
+  camera.top = vertical
+  camera.bottom = -vertical
+  // A view offset preserves the HUD's pixel clearance even when OrbitControls changes zoom.
+  camera.setViewOffset(width, height, -sidebar / 2, 0, width, height)
+}

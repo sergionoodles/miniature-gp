@@ -2,26 +2,31 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
+import { frameCircuitCameraInPlace } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
-import { createLabel } from './sceneAssets'
+import { createDriverDot, createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
+import { stoppedAt, type StoppedInterval } from './stoppedCars'
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
 type Props = {
   replay: Replay
   timeRef: RefObject<number>
   circuit: string
+  hoveredDriver: number | null
+  carMode: 'cars' | 'dots'
+  stops: Map<number, StoppedInterval[]>
   selectedDriver: number | null
   onSelectDriver: (driver: number | null) => void
 }
 
-export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectDriver }: Props) {
+export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDriver, carMode, stops, onSelectDriver }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const selectionRef = useRef(selectedDriver)
+  const optionsRef = useRef({ selectedDriver, hoveredDriver, carMode })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
   const [view, setView] = useState<'overview' | 'top'>('overview')
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => { selectionRef.current = selectedDriver }, [selectedDriver])
+  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, carMode } }, [selectedDriver, hoveredDriver, carMode])
 
   useEffect(() => {
     const container = containerRef.current
@@ -33,7 +38,17 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectD
       setError('The 3D view needs WebGL. Try a browser with hardware acceleration enabled. Race timing and playback are still available.')
       return
     }
-    const { scene, cars, project, width, depth } = buildCircuit(replay, circuit)
+    const { scene, cars, project, width, depth, track, updateLighting } = buildCircuit(replay, circuit)
+    const dots = new Map(replay.drivers.map((driver) => {
+      const dot = createDriverDot(driver)
+      scene.add(dot)
+      return [driver.number, dot] as const
+    }))
+    const ghosts = new Map(replay.drivers.map((driver) => {
+      const ghost = createGhost(driver)
+      scene.add(ghost)
+      return [driver.number, ghost] as const
+    }))
     const camera = new THREE.OrthographicCamera(-130, 130, 100, -100, 0.1, 1000)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -63,8 +78,8 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectD
     resetCamera(false)
     actionRef.current = (action) => {
       if (action === 'overview' || action === 'top') resetCamera(action === 'top')
-      if (action === 'locate' && selectionRef.current !== null) {
-        const car = cars.get(selectionRef.current)
+      if (action === 'locate' && optionsRef.current.selectedDriver !== null) {
+        const car = optionsRef.current.carMode === 'dots' ? dots.get(optionsRef.current.selectedDriver) : cars.get(optionsRef.current.selectedDriver)
         if (car?.visible) {
           camera.position.sub(controls.target).add(car.position)
           controls.target.copy(car.position)
@@ -84,13 +99,8 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectD
     const resize = () => {
       const { width: viewportWidth, height: viewportHeight } = container.getBoundingClientRect()
       if (!viewportWidth || !viewportHeight) return
-      const aspect = viewportWidth / viewportHeight
-      const vertical = Math.max(depth * 0.49 + 22, (width * 0.56 + 12) / aspect)
-      camera.left = -vertical * aspect
-      camera.right = vertical * aspect
-      camera.top = vertical
-      camera.bottom = -vertical
-      camera.updateProjectionMatrix()
+      const sidebar = window.innerWidth > 760 ? 286 : 0
+      frameCircuitCameraInPlace(camera, viewportWidth, viewportHeight, width, depth, sidebar)
       renderer.setSize(viewportWidth, viewportHeight)
     }
     const observer = new ResizeObserver(resize)
@@ -100,12 +110,8 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectD
     marker.rotation.x = -Math.PI / 2
     marker.renderOrder = 4
     scene.add(marker)
-    const labels = new Map(replay.drivers.map((driver) => {
-      const label = createLabel(`${driver.code}  ${driver.number}`)
-      label.visible = false
-      scene.add(label)
-      return [driver.number, label] as const
-    }))
+    const labels = createDriverLabels(replay.drivers, scene)
+    const isolateDriver = createHoverIsolation(scene, cars, dots)
     const pointerStart = new THREE.Vector2()
     const raycaster = new THREE.Raycaster()
     const pointerDown = (event: PointerEvent) => pointerStart.set(event.clientX, event.clientY)
@@ -113,27 +119,44 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectD
       if (event.button !== 0 || pointerStart.distanceTo(new THREE.Vector2(event.clientX, event.clientY)) > 5) return
       const bounds = canvas.getBoundingClientRect()
       raycaster.setFromCamera(new THREE.Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1), camera)
-      const hits = raycaster.intersectObjects([...cars.values()].filter((car) => car.visible), true)
+      const hits = raycaster.intersectObjects([...cars.values(), ...dots.values()].filter((car) => car.visible), true)
       const hit = hits[0]
       if (!hit) return
       const selected = [...cars].find(([, car]) => car.children.includes(hit.object))
-      if (selected) onSelectDriver(selected[0])
+      const selectedDot = [...dots].find(([, dot]) => dot === hit.object)
+      if (selected || selectedDot) onSelectDriver((selected ?? selectedDot)?.[0] ?? null)
     }
     canvas.addEventListener('pointerdown', pointerDown)
     canvas.addEventListener('pointerup', pointerUp)
     let frame = 0
     let lastDiagnostic = 0
+    let previousHover: number | null = null
     const animate = (now: number) => {
+      const options = optionsRef.current
+      updateLighting(timeRef.current, options.hoveredDriver !== null)
+      if (previousHover !== options.hoveredDriver) {
+        isolateDriver(options.hoveredDriver)
+        previousHover = options.hoveredDriver
+      }
       marker.visible = false
       for (const [number, car] of cars) {
         const location = carLocation(replay.locations[String(number)] ?? [], timeRef.current)
-        car.visible = location !== null
+        const stop = stoppedAt(stops.get(number) ?? [], timeRef.current)
+        const dot = dots.get(number)
+        const ghost = ghosts.get(number)
         const label = labels.get(number)
+        car.visible = location !== null && !stop && options.carMode === 'cars'
+        if (dot) dot.visible = location !== null && !stop && options.carMode === 'dots'
+        if (ghost) {
+          if (stop) positionGhostInPlace(ghost, project(stop[2], stop[3]), track)
+          ghost.visible = stop !== null
+        }
         if (label) label.visible = false
-        if (!location) continue
+        if (!location || stop) continue
         car.position.copy(project(location.x, location.y, 0.08))
         car.rotation.y = Math.atan2(-Math.cos(location.heading), -Math.sin(location.heading))
-        if (selectionRef.current === number) {
+        if (dot) dot.position.copy(car.position).setY(0.9)
+        if ((options.hoveredDriver ?? options.selectedDriver) === number) {
           marker.visible = true
           marker.position.copy(car.position).setY(0.16)
           if (label) {
@@ -145,7 +168,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectD
       controls.update()
       renderer.render(scene, camera)
       if (import.meta.env.DEV && now - lastDiagnostic > 1000) {
-        container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom })
+        container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom, mode: options.carMode, isolated: options.hoveredDriver, ghosts: [...ghosts].filter(([, ghost]) => ghost.visible).map(([number]) => number) })
         lastDiagnostic = now
       }
       frame = requestAnimationFrame(animate)
@@ -177,7 +200,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectD
       renderer.dispose()
       actionRef.current = () => {}
     }
-  }, [replay, timeRef, circuit, onSelectDriver])
+  }, [replay, timeRef, circuit, stops, onSelectDriver])
 
   const changeView = (next: 'overview' | 'top') => {
     setView(next)
@@ -187,10 +210,10 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, onSelectD
   return <>
     <div className="track-canvas" ref={containerRef} />
     {error && <div className="scene-error" role="alert">{error}</div>}
-    {selectedDriver !== null && <button className="locate-driver" type="button" disabled={!carLocation(replay.locations[String(selectedDriver)] ?? [], timeRef.current)} onClick={() => actionRef.current('locate')}>⌖ Locate driver</button>}
+    {selectedDriver !== null && <button className="locate-driver" type="button" disabled={!carLocation(replay.locations[String(selectedDriver)] ?? [], timeRef.current) || stoppedAt(stops.get(selectedDriver) ?? [], timeRef.current) !== null} onClick={() => actionRef.current('locate')}>⌖ Locate driver</button>}
     <div className="camera-toolbar" aria-label="Camera controls" role="group">
       <div className="view-switch">
-        <button type="button" aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>◈ <span>Diorama</span></button>
+        <button type="button" aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>◈ <span>Orbit</span></button>
         <button type="button" aria-pressed={view === 'top'} onClick={() => changeView('top')}>⊞ <span>Top view</span></button>
       </div>
       <div className="zoom-controls">

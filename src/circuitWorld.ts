@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { createRaceLighting } from './raceLighting'
 import type { Replay } from './replay'
 import { canPlaceStructure, createProjection, createRibbonGeometry } from './circuitGeometry'
 import { box, createCar, createGrandstand, createLabel, createMergedMesh, createPaddock } from './sceneAssets'
@@ -31,11 +32,7 @@ function terrainHeight(x: number, z: number, distance: number, width: number, de
 }
 
 function addTerrain(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boolean, width: number, depth: number) {
-  const base = new THREE.Mesh(new THREE.BoxGeometry(width, 3, depth), new THREE.MeshStandardMaterial({ color: 0xb6b3a0, roughness: 1 }))
-  base.position.y = -1.7
-  base.receiveShadow = true
-  scene.add(base)
-  const geometry = new THREE.PlaneGeometry(width, depth, 100, 100).rotateX(-Math.PI / 2)
+  const geometry = new THREE.PlaneGeometry(width, depth, 140, 140).rotateX(-Math.PI / 2)
   const positions = geometry.getAttribute('position')
   const colors: number[] = []
   const sand = new THREE.Color(isCoastal ? 0xcfc3a0 : 0x7e9671)
@@ -57,9 +54,9 @@ function addTerrain(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boole
   const ground = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, map: texture, roughness: 1 }))
   ground.receiveShadow = true
   scene.add(ground)
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0xe7e4da, roughness: 1 }))
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0x87977c, roughness: 1 }))
   floor.rotation.x = -Math.PI / 2
-  floor.position.y = -3.3
+  floor.position.y = -0.3
   floor.receiveShadow = true
   scene.add(floor)
 }
@@ -68,7 +65,7 @@ function addTrack(scene: THREE.Scene, track: THREE.Vector3[]) {
   const asphaltTexture = createSurfaceTexture('#616765', '#828581')
   const surfaces: [number, number, number, number][] = [
     [7.5, -0.02, 0xc4b99b, 0], [4.5, 0.01, 0x9caa84, 0],
-    [TRACK_WIDTH + 0.22, 0.04, 0xf6f1dc, 0], [TRACK_WIDTH, 0.055, 0x777d79, 0],
+    [TRACK_WIDTH + 0.22, 0.04, 0xb4d5d8, 0], [TRACK_WIDTH, 0.055, 0x8a9a9f, 0],
   ]
   for (const [width, height, color, offset] of surfaces) {
     const material = new THREE.MeshStandardMaterial({ color, roughness: 0.96, map: width === TRACK_WIDTH ? asphaltTexture : null })
@@ -138,7 +135,7 @@ function addStructures(scene: THREE.Scene, track: THREE.Vector3[], width: number
 function addScenery(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boolean, width: number, depth: number) {
   const dummy = new THREE.Object3D()
   const footprints = addStructures(scene, track, width, depth)
-  const amount = isCoastal ? 230 : 560
+  const amount = isCoastal ? 340 : 760
   const trees = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ roughness: 1 }), amount)
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.22, 2, 5), new THREE.MeshStandardMaterial({ color: 0x6c6451, roughness: 1 }), amount)
   const shadows = new THREE.InstancedMesh(new THREE.CircleGeometry(1.8, 10).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x344d37, transparent: true, opacity: 0.13, depthWrite: false }), amount)
@@ -148,10 +145,10 @@ function addScenery(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boole
     const x = (Math.sin(attempt * 127.1 + 7) * 43758.5453 % 1) * (width / 2 - 4)
     const z = (Math.sin(attempt * 311.7 + 11) * 19873.234 % 1) * (depth / 2 - 4)
     const distance = Math.min(...sparseTrack.map((point) => Math.hypot(point.x - x, point.z - z)))
-    if (distance < 7 || distance > 17) continue
+    if (distance < 7 || distance > 60) continue
     const point = new THREE.Vector3(x, 0, z)
     if (footprints.some(({ center, outward, length }) => !canPlaceStructure([point], center, outward, length))) continue
-    const elevation = terrainHeight(x, z, distance, width, depth, isCoastal)
+    const elevation = terrainHeight(x, z, distance, width + 360, depth + 360, isCoastal)
     const size = 0.7 + (attempt % 11) / 10
     const height = isCoastal ? 0.65 : 2.7
     dummy.position.set(x, elevation + height * size, z)
@@ -173,8 +170,29 @@ function addScenery(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boole
   scene.add(trees, shadows)
   if (!isCoastal) scene.add(trunks)
   else { trunks.geometry.dispose(); (trunks.material as THREE.Material).dispose() }
+}
 
-
+function addOutskirts(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boolean, width: number, depth: number) {
+  const count = 1800
+  const groves = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 1 }), count)
+  const sparseTrack = track.filter((_, index) => index % 8 === 0)
+  const dummy = new THREE.Object3D()
+  let placed = 0
+  for (let index = 0; index < count * 2 && placed < count; index++) {
+    const x = Math.sin(index * 117.3) * Math.cos(index * 61.9) * width / 2
+    const z = Math.sin(index * 73.1 + 3) * Math.cos(index * 27.7) * depth / 2
+    const distance = Math.min(...sparseTrack.map((point) => Math.hypot(point.x - x, point.z - z)))
+    if (distance < 22) continue
+    const height = (isCoastal ? 1.1 : 3.5) + index % 5 * 0.5
+    dummy.position.set(x, terrainHeight(x, z, distance, width, depth, isCoastal) + height * 0.55, z)
+    dummy.scale.set(2 + index % 3, height, 2 + index % 3)
+    dummy.rotation.y = index
+    dummy.updateMatrix()
+    groves.setMatrixAt(placed, dummy.matrix)
+    groves.setColorAt(placed++, new THREE.Color([0x47684e, 0x5d7857, 0x395b46][index % 3]))
+  }
+  groves.count = placed
+  scene.add(groves)
 }
 
 export function buildCircuit(replay: Replay, circuit: string) {
@@ -187,17 +205,10 @@ export function buildCircuit(replay: Replay, circuit: string) {
   const depth = size.z + 38
   const isCoastal = circuit === 'Circuit Zandvoort'
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color(0xe7e4da)
-  scene.add(new THREE.HemisphereLight(0xe8f4ff, 0xa89775, 2))
-  const sun = new THREE.DirectionalLight(0xffefd3, 3.2)
-  sun.position.set(-70, 110, 50)
-  sun.castShadow = true
-  sun.shadow.mapSize.set(2048, 2048)
-  Object.assign(sun.shadow.camera, { left: -150, right: 150, top: 150, bottom: -150, near: 1, far: 300 })
-  sun.shadow.normalBias = 0.2
-  sun.shadow.bias = -0.0002
-  scene.add(sun)
-  addTerrain(scene, track, isCoastal, width, depth)
+  const updateLighting = createRaceLighting(scene, replay)
+  updateLighting(0, false)
+  addTerrain(scene, track, isCoastal, width + 360, depth + 360)
+  addOutskirts(scene, track, isCoastal, width + 360, depth + 360)
   addTrack(scene, track)
   addScenery(scene, track, isCoastal, width, depth)
   const cars = new Map(replay.drivers.map((driver) => {
@@ -206,5 +217,5 @@ export function buildCircuit(replay: Replay, circuit: string) {
     scene.add(car)
     return [driver.number, car] as const
   }))
-  return { scene, cars, project, width, depth }
+  return { scene, cars, project, width, depth, track, updateLighting }
 }

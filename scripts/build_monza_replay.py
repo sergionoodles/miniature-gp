@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -47,9 +48,33 @@ def sample_locations(rows, start, end):
     return [seconds[second] for second in sorted(seconds)]
 
 
-def main(race):
+def with_session_metadata(replay, session):
+    if replay["sessionKey"] != session.get("session_key"):
+        raise ValueError("Session metadata does not match the replay")
+    gmt_offset = session.get("gmt_offset")
+    if not isinstance(gmt_offset, str) or not re.fullmatch(r"[+-]?(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?", gmt_offset):
+        raise ValueError("Session GMT offset is missing or invalid")
+    return {**replay, "gmt_offset": gmt_offset}
+
+
+def write_replay(output, replay):
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w") as file:
+        json.dump(replay, file, separators=(",", ":"))
+    print(f"Wrote {output} ({output.stat().st_size / 1_000_000:.1f} MB)")
+
+
+def main(race, metadata_only=False):
     session_key, track_driver, track_lap_number = RACES[race]
     output = DATA_DIRECTORY / f"{race}-2026.json"
+    sessions = fetch("sessions", session_key=session_key)
+    if len(sessions) != 1:
+        raise ValueError("Expected exactly one race session")
+    session = sessions[0]
+    if metadata_only:
+        replay = json.loads(output.read_text())
+        write_replay(output, with_session_metadata(replay, session))
+        return
     controls = fetch("race_control", session_key=session_key)
     starts = [row for row in controls if row["category"] == "SessionStatus" and row["message"] == "SESSION STARTED"]
     finishes = [row for row in controls if row["category"] == "SessionStatus" and row["message"] == "SESSION FINISHED"]
@@ -115,13 +140,12 @@ def main(race):
         replay["locations"][str(number)] = sample_locations(rows, race_start, race_end)
         time.sleep(0.15)
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w") as file:
-        json.dump(replay, file, separators=(",", ":"))
-    print(f"Wrote {output} ({output.stat().st_size / 1_000_000:.1f} MB)")
+    write_replay(output, with_session_metadata(replay, session))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--race", choices=RACES, default="monza")
-    main(parser.parse_args().race)
+    parser.add_argument("--metadata-only", action="store_true", help="Refresh session metadata without downloading telemetry")
+    args = parser.parse_args()
+    main(args.race, args.metadata_only)

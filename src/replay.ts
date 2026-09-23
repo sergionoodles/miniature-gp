@@ -17,6 +17,7 @@ export type Driver = {
 export type Replay = {
   sessionKey: number
   start: string
+  gmt_offset?: string
   duration: number
   drivers: Driver[]
   track: [number, number][]
@@ -33,6 +34,8 @@ export function isReplay(value: unknown): value is Replay {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
   return typeof record.duration === 'number'
+    && typeof record.start === 'string'
+    && (record.gmt_offset === undefined || typeof record.gmt_offset === 'string')
     && Array.isArray(record.drivers)
     && Array.isArray(record.track)
     && typeof record.locations === 'object'

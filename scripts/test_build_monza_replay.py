@@ -1,6 +1,23 @@
 import unittest
 
-from build_monza_replay import milliseconds, sample_locations
+from build_monza_replay import milliseconds, sample_locations, with_session_metadata
+
+
+class SessionMetadataTest(unittest.TestCase):
+    def test_preserves_timezone_without_replacing_actual_race_start_or_telemetry(self):
+        replay = {"sessionKey": 11361, "start": "2026-09-06T13:03:30Z", "locations": {"1": [[0, 2, 3]]}}
+        result = with_session_metadata(replay, {"session_key": 11361, "gmt_offset": "02:00:00"})
+        self.assertEqual(result, {**replay, "gmt_offset": "02:00:00"})
+        self.assertNotIn("gmt_offset", replay)
+
+    def test_rejects_missing_or_invalid_offsets(self):
+        for value in (None, "99:00:00", "bad"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                with_session_metadata({"sessionKey": 1}, {"session_key": 1, "gmt_offset": value})
+
+    def test_rejects_metadata_for_a_different_session(self):
+        with self.assertRaises(ValueError):
+            with_session_metadata({"sessionKey": 1}, {"session_key": 2, "gmt_offset": "02:00:00"})
 
 
 class SampleLocationsTest(unittest.TestCase):

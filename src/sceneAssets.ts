@@ -80,13 +80,13 @@ export function createGrandstand(length: number) {
   return group
 }
 
-export function createLabel(text: string, color = '#263b38') {
+export function createLabel(text: string, color = '#bfeaf1') {
   const canvas = document.createElement('canvas')
   canvas.width = 256
   canvas.height = 80
   const context = canvas.getContext('2d')
   if (context) {
-    context.fillStyle = '#faf7ef'
+    context.fillStyle = '#0b202be8'
     context.beginPath()
     context.roundRect(4, 4, 248, 72, 12)
     context.fill()
