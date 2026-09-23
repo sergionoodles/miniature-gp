@@ -152,7 +152,7 @@ export default function App() {
     <div className={`app-shell${isRaining ? ' raining' : ''}`}>
       <header className="topbar">
         <div className="identity">
-          <span className="identity-mark" aria-hidden="true"><span /><span /><span /></span>
+          <img className="identity-mark" src="/logo.jpg" alt="" />
           <div>
             <div className="app-name">Miniature GP</div>
           </div>

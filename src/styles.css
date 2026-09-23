@@ -12,10 +12,7 @@ button { transition: background .15s, color .15s; }
 .app-shell { height: 100dvh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden; }
 .topbar { height: 78px; flex: 0 0 78px; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; border-bottom: 1px solid #29424e; background: #081420d9; backdrop-filter: blur(18px); z-index: 2; }
 .identity { display: flex; align-items: center; gap: 15px; }
-.identity-mark { display: flex; align-items: end; gap: 4px; transform: skewX(-23deg); }
-.identity-mark span { width: 8px; height: 31px; background: #4bccca; }
-.identity-mark span:nth-child(2) { height: 23px; }
-.identity-mark span:nth-child(3) { height: 15px; }
+.identity-mark { width: 42px; height: 42px; object-fit: cover; border-radius: 8px; }
 .app-name { font-weight: 650; font-size: 18px; letter-spacing: 1.4px; text-transform: uppercase; }
 .app-subtitle { font-size: 11px; color: #92aebc; margin-top: 5px; letter-spacing: .3px; }
 .race-picker { display: flex; gap: 22px; }
