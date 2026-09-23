@@ -2,12 +2,6 @@ import * as THREE from 'three'
 import { createLabel } from './sceneAssets'
 import type { Driver } from './replay'
 
-export function createDriverDot(driver: Driver) {
-  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), new THREE.MeshBasicMaterial({ color: driver.color, toneMapped: false }))
-  dot.visible = false
-  return dot
-}
-
 export function createGhost(driver: Driver) {
   const canvas = document.createElement('canvas')
   canvas.width = 128
@@ -64,12 +58,11 @@ export function createDriverLabels(drivers: Driver[], scene: THREE.Scene) {
   }))
 }
 
-export function createHoverIsolation(scene: THREE.Scene, cars: Map<number, THREE.Group>, dots: Map<number, THREE.Mesh>) {
+export function createHoverIsolation(scene: THREE.Scene, cars: Map<number, THREE.Group>) {
   const owners = new Map<THREE.Material, number>()
   cars.forEach((car, number) => car.traverse((part) => {
     if (part instanceof THREE.Mesh && !Array.isArray(part.material)) owners.set(part.material, number)
   }))
-  dots.forEach((dot, number) => { if (!Array.isArray(dot.material)) owners.set(dot.material, number) })
   const uniforms = new Map<THREE.Material, { value: number }>()
   scene.traverse((object) => {
     if (!(object instanceof THREE.Mesh || object instanceof THREE.Sprite)) return

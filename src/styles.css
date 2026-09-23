@@ -87,6 +87,15 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .race-notice span { display: block; font-size: 10px; margin-top: 4px; }
 .pit-notice { top: 145px; background: #163444e8; color: #c6eef3; box-shadow: 0 4px 20px #00000030; }
 .race-notice + .pit-notice { top: 205px; }
+.race-start-hud { position: absolute; top: 50%; left: calc(50% + 143px); transform: translate(-50%, -50%); z-index: 1; }
+.race-start-button { display: flex; align-items: center; gap: 12px; white-space: nowrap; border: 1px solid #8ce6df; border-radius: 7px; padding: 17px 24px; background: #4bccca; color: #09212c; font-size: 15px; font-weight: 700; box-shadow: 0 8px 32px #0009; }
+.race-start-button:hover { background: #8ce6df; }
+.race-start-countdown { min-width: 130px; display: grid; justify-items: center; gap: 8px; border: 1px solid #8ce6df; border-radius: 7px; padding: 14px 24px; background: #081b2aeb; box-shadow: 0 8px 32px #0009; }
+.race-start-countdown > span { font-family: monospace; font-size: 10px; letter-spacing: 2px; color: #9ec7cd; }
+.race-start-countdown strong { font-family: monospace; font-size: 42px; line-height: 1; color: #e9f7f5; }
+.start-lights { display: flex; gap: 8px; }
+.start-lights i { width: 12px; height: 12px; border-radius: 50%; background: #394954; }
+.start-lights.step-1 i:first-child, .start-lights.step-2 i:nth-child(-n+2), .start-lights.step-3 i { background: #f16b59; box-shadow: 0 0 10px #f16b59; }
 .transport { display: flex; align-items: center; flex: 0 0 88px; padding: 0 30px; gap: 24px; background: #081420e8; backdrop-filter: blur(18px); border-top: 1px solid #2b4552; z-index: 2; }
 .replay-label { flex: 0 0 232px; display: grid; gap: 9px; }
 .replay-label .section-eyebrow { color: #8faebd; }
@@ -125,6 +134,7 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .race-picker select { width: 100%; min-height: 44px; }
   .workspace { flex-direction: column-reverse; }
   .race-stage { position: relative; inset: auto; flex: none; height: clamp(430px, calc(100svh - 250px), 600px); }
+  .race-start-hud { left: 50%; }
   .stage-topline { top: 24px; left: 20px; right: 18px; }
   h1 { font-size: 24px; letter-spacing: 1px; }
   .stage-title { padding: 10px; max-width: calc(100% - 88px); }
@@ -155,22 +165,9 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .locate-driver:hover { background: #214956; }
 @media (max-width: 760px) { .locate-driver { right: 18px; bottom: 248px; min-height: 44px; } }
 
-.render-setting { position: absolute; top: 115px; right: 26px; display: grid; gap: 9px; border: 1px solid #35505f; padding: 12px 14px; border-radius: 4px; background: #0b1d2bbd; backdrop-filter: blur(14px); }
-.render-setting > span:first-child { font-family: monospace; font-size: 8px; letter-spacing: 1.5px; color: #96b4c0; }
-.render-toggle { display: flex; align-items: center; gap: 9px; font-size: 11px; cursor: pointer; }
-.render-toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; inset: 0; cursor: pointer; }
-.render-toggle i { width: 32px; height: 18px; border: 1px solid #426574; border-radius: 12px; background: #173341; padding: 3px; }
-.render-toggle i::after { content: ''; display: block; width: 10px; height: 10px; border-radius: 50%; background: #9fb6c1; transition: transform .15s; }
-.render-toggle input:checked + i { border-color: #5ad5d4; background: #205a62; }
-.render-toggle input:checked + i::after { transform: translateX(13px); background: #8ffff0; }
-.render-toggle input:focus-visible + i { outline: 2px solid #9cf8ee; outline-offset: 4px; }
 .stopped-icon { display: inline-block; width: 12px; height: 14px; font-size: 0; background: #afc8d4; border-radius: 8px 8px 2px 2px; position: relative; }
 .stopped-icon::after { content: '··'; position: absolute; color: #102432; font-size: 16px; line-height: 10px; top: 0; left: 2px; letter-spacing: 1px; }
 @media (max-width: 760px) {
-  .render-setting { top: 118px; right: 18px; padding: 10px 12px; }
-  .render-setting > span:first-child { display: none; }
-  .render-toggle { min-height: 24px; }
   .race-notice, .pit-notice { top: 178px; }
   .race-notice + .pit-notice { top: 236px; }
 }
-@media (prefers-reduced-motion: reduce) { .render-toggle i::after { transition: none; } }

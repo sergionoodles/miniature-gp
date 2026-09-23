@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
 import { frameCircuitCameraInPlace } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
-import { createDriverDot, createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
+import { createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
@@ -13,20 +13,19 @@ type Props = {
   timeRef: RefObject<number>
   circuit: string
   hoveredDriver: number | null
-  carMode: 'cars' | 'dots'
   stops: Map<number, StoppedInterval[]>
   selectedDriver: number | null
   onSelectDriver: (driver: number | null) => void
 }
 
-export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDriver, carMode, stops, onSelectDriver }: Props) {
+export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDriver, stops, onSelectDriver }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const optionsRef = useRef({ selectedDriver, hoveredDriver, carMode })
+  const optionsRef = useRef({ selectedDriver, hoveredDriver })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
   const [view, setView] = useState<'overview' | 'top'>('overview')
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, carMode } }, [selectedDriver, hoveredDriver, carMode])
+  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver } }, [selectedDriver, hoveredDriver])
 
   useEffect(() => {
     const container = containerRef.current
@@ -39,11 +38,6 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       return
     }
     const { scene, cars, project, width, depth, track, updateLighting } = buildCircuit(replay, circuit)
-    const dots = new Map(replay.drivers.map((driver) => {
-      const dot = createDriverDot(driver)
-      scene.add(dot)
-      return [driver.number, dot] as const
-    }))
     const ghosts = new Map(replay.drivers.map((driver) => {
       const ghost = createGhost(driver)
       scene.add(ghost)
@@ -62,8 +56,8 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
     container.appendChild(canvas)
     const controls = new OrbitControls(camera, canvas)
     controls.minZoom = 0.7
-    controls.maxZoom = 8
-    controls.maxPolarAngle = Math.PI * 0.44
+    controls.maxZoom = 3
+    controls.maxPolarAngle = Math.PI * 0.3
     controls.enableDamping = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
     controls.dampingFactor = 0.12
     controls.listenToKeyEvents(canvas)
@@ -79,11 +73,11 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
     actionRef.current = (action) => {
       if (action === 'overview' || action === 'top') resetCamera(action === 'top')
       if (action === 'locate' && optionsRef.current.selectedDriver !== null) {
-        const car = optionsRef.current.carMode === 'dots' ? dots.get(optionsRef.current.selectedDriver) : cars.get(optionsRef.current.selectedDriver)
+        const car = cars.get(optionsRef.current.selectedDriver)
         if (car?.visible) {
           camera.position.sub(controls.target).add(car.position)
           controls.target.copy(car.position)
-          camera.zoom = 4
+          camera.zoom = controls.maxZoom
           camera.updateProjectionMatrix()
         }
       }
@@ -111,7 +105,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
     marker.renderOrder = 4
     scene.add(marker)
     const labels = createDriverLabels(replay.drivers, scene)
-    const isolateDriver = createHoverIsolation(scene, cars, dots)
+    const isolateDriver = createHoverIsolation(scene, cars)
     const pointerStart = new THREE.Vector2()
     const raycaster = new THREE.Raycaster()
     const pointerDown = (event: PointerEvent) => pointerStart.set(event.clientX, event.clientY)
@@ -119,12 +113,11 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       if (event.button !== 0 || pointerStart.distanceTo(new THREE.Vector2(event.clientX, event.clientY)) > 5) return
       const bounds = canvas.getBoundingClientRect()
       raycaster.setFromCamera(new THREE.Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1), camera)
-      const hits = raycaster.intersectObjects([...cars.values(), ...dots.values()].filter((car) => car.visible), true)
+      const hits = raycaster.intersectObjects([...cars.values()].filter((car) => car.visible), true)
       const hit = hits[0]
       if (!hit) return
       const selected = [...cars].find(([, car]) => car.children.includes(hit.object))
-      const selectedDot = [...dots].find(([, dot]) => dot === hit.object)
-      if (selected || selectedDot) onSelectDriver((selected ?? selectedDot)?.[0] ?? null)
+      if (selected) onSelectDriver(selected[0])
     }
     canvas.addEventListener('pointerdown', pointerDown)
     canvas.addEventListener('pointerup', pointerUp)
@@ -142,11 +135,9 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       for (const [number, car] of cars) {
         const location = carLocation(replay.locations[String(number)] ?? [], timeRef.current)
         const stop = stoppedAt(stops.get(number) ?? [], timeRef.current)
-        const dot = dots.get(number)
         const ghost = ghosts.get(number)
         const label = labels.get(number)
-        car.visible = location !== null && !stop && options.carMode === 'cars'
-        if (dot) dot.visible = location !== null && !stop && options.carMode === 'dots'
+        car.visible = location !== null && !stop
         if (ghost) {
           if (stop) positionGhostInPlace(ghost, project(stop[2], stop[3]), track)
           ghost.visible = stop !== null
@@ -155,7 +146,6 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
         if (!location || stop) continue
         car.position.copy(project(location.x, location.y, 0.08))
         car.rotation.y = Math.atan2(-Math.cos(location.heading), -Math.sin(location.heading))
-        if (dot) dot.position.copy(car.position).setY(0.9)
         if ((options.hoveredDriver ?? options.selectedDriver) === number) {
           marker.visible = true
           marker.position.copy(car.position).setY(0.16)
@@ -168,7 +158,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       controls.update()
       renderer.render(scene, camera)
       if (import.meta.env.DEV && now - lastDiagnostic > 1000) {
-        container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom, mode: options.carMode, isolated: options.hoveredDriver, ghosts: [...ghosts].filter(([, ghost]) => ghost.visible).map(([number]) => number) })
+        container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom, polarAngle: controls.getPolarAngle(), isolated: options.hoveredDriver, ghosts: [...ghosts].filter(([, ghost]) => ghost.visible).map(([number]) => number) })
         lastDiagnostic = now
       }
       frame = requestAnimationFrame(animate)

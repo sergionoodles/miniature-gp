@@ -4,21 +4,27 @@ import { TrackScene } from './TrackScene'
 import { carLocation, clockLabel, isReplay, lapsAt, latestAt, positionsAt, raceStatus, type Replay } from './replay'
 
 const RACES = {
-  netherlands: { url: '/data/netherlands-2026.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Circuit Zandvoort', grandPrix: 'Dutch Grand Prix', date: '23 Aug 2026', laps: 72 },
-  monza: { url: '/data/monza-2026.json', label: 'Italian Grand Prix · Monza', circuit: 'Autodromo Nazionale Monza', grandPrix: 'Italian Grand Prix', date: '6 Sep 2026', laps: 53 },
+  netherlands: { url: '/data/netherlands-2026.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Circuit Zandvoort', grandPrix: 'Dutch Grand Prix', date: '2026-08-23', laps: 72 },
+  monza: { url: '/data/monza-2026.json', label: 'Italian Grand Prix · Monza', circuit: 'Autodromo Nazionale Monza', grandPrix: 'Italian Grand Prix', date: '2026-09-06', laps: 53 },
 } as const
+const RACE_OPTIONS = Object.entries(RACES).sort(([, first], [, second]) => second.date.localeCompare(first.date))
+const formatRaceDate = (date: string) => {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(year, month - 1, day))
+}
 const SPEEDS = [1, 2, 5, 10, 30, 60, 120]
 
 export default function App() {
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
-  const [carMode, setCarMode] = useState<'cars' | 'dots'>('cars')
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
-  const [raceId, setRaceId] = useState<keyof typeof RACES>('netherlands')
+  const [raceId, setRaceId] = useState<keyof typeof RACES>('monza')
   const race = RACES[raceId]
   const [replay, setReplay] = useState<Replay | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [time, setTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [hasStarted, setHasStarted] = useState(false)
+  const [countdown, setCountdown] = useState<number | null>(null)
   const [speed, setSpeed] = useState(30)
   const timeRef = useRef(0)
   const isPlayingRef = useRef(false)
@@ -34,9 +40,6 @@ export default function App() {
       .then((value) => {
         if (!isReplay(value)) throw new Error('The replay file is incomplete.')
         setReplay(value)
-        const shouldPlay = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        isPlayingRef.current = shouldPlay
-        setIsPlaying(shouldPlay)
       })
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === 'AbortError') return
@@ -49,6 +52,8 @@ export default function App() {
     isPlayingRef.current = false
     timeRef.current = 0
     setIsPlaying(false)
+    setHasStarted(false)
+    setCountdown(null)
     setTime(0)
     setReplay(null)
     setError(null)
@@ -81,16 +86,39 @@ export default function App() {
     return () => cancelAnimationFrame(frame)
   }, [replay])
 
+  useEffect(() => {
+    if (countdown === null) return
+    const timeout = window.setTimeout(() => {
+      if (countdown > 1) {
+        setCountdown(countdown - 1)
+        return
+      }
+      setCountdown(null)
+      setHasStarted(true)
+      isPlayingRef.current = true
+      setIsPlaying(true)
+    }, 1000)
+    return () => window.clearTimeout(timeout)
+  }, [countdown])
+
   const setPlayback = (playing: boolean) => {
+    if (!playing) setCountdown(null)
     if (playing && replay && timeRef.current >= replay.duration) {
       timeRef.current = 0
       setTime(0)
     }
+    if (playing && timeRef.current === 0) {
+      setCountdown(3)
+      return
+    }
     isPlayingRef.current = playing
     setIsPlaying(playing)
+    if (playing) setHasStarted(true)
   }
 
   const seek = (nextTime: number) => {
+    setCountdown(null)
+    if (nextTime > 0) setHasStarted(true)
     timeRef.current = nextTime
     setTime(nextTime)
     if (replay && nextTime >= replay.duration) setPlayback(false)
@@ -127,13 +155,12 @@ export default function App() {
           <span className="identity-mark" aria-hidden="true"><span /><span /><span /></span>
           <div>
             <div className="app-name">Grand Prix Atlas</div>
-            <div className="app-subtitle">The race, in perspective.</div>
           </div>
         </div>
         <div className="race-picker" role="group" aria-label="Selected race">
           <label>Season<select aria-label="Season" defaultValue="2026"><option value="2026">2026</option></select></label>
           <label>Grand Prix<select aria-label="Grand Prix" value={raceId} onChange={(event) => selectRace(event.target.value === 'monza' ? 'monza' : 'netherlands')}>
-            {Object.entries(RACES).map(([id, option]) => <option key={id} value={id}>{option.label}</option>)}
+            {RACE_OPTIONS.map(([id, option]) => <option key={id} value={id}>{option.label} · {formatRaceDate(option.date)}</option>)}
           </select></label>
         </div>
       </header>
@@ -142,9 +169,8 @@ export default function App() {
         <aside className="order-panel">
           <div className="panel-heading">
             <div>
-              <span className="section-eyebrow">RACE CLASSIFICATION</span>
               <span className="section-title">Running order</span>
-              <span className="section-note">{race.circuit.replace('Circuit ', '')} · {race.date}</span>
+              <span className="section-note">{race.circuit.replace('Circuit ', '')} · {formatRaceDate(race.date)}</span>
             </div>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
           </div>
@@ -161,16 +187,16 @@ export default function App() {
             ))}
             {!replay && <div className="panel-message">{error ?? 'Loading race data…'}</div>}
           </div>
-          <div className="data-credit">Recorded telemetry · OpenF1</div>
+          <div className="data-credit">Recorded telemetry · <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a></div>
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay ? <TrackScene key={raceId} replay={replay} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} carMode={carMode} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
+          {replay ? <TrackScene key={raceId} replay={replay} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
           <div className="stage-topline">
             <div className="stage-title">
-              <span className="stage-kicker">CIRCUIT ATLAS <i /> {raceId === 'monza' ? 'ITA' : 'NLD'} / 2026</span>
+              <span className="stage-kicker">{raceId === 'monza' ? 'ITA' : 'NLD'} / 2026</span>
               <h1>{raceId === 'monza' ? 'Monza' : 'Zandvoort'}</h1>
-              <span>{race.grandPrix} <b>·</b> {race.date}</span>
+              <span>{race.grandPrix} <b>·</b> {formatRaceDate(race.date)}</span>
             </div>
             <div className={`status-chip ${status === 'Red flag' ? 'flag-red' : status.includes('afety') ? 'flag-yellow' : ''}`}>
               <span className="status-dot" />{status}
@@ -183,21 +209,23 @@ export default function App() {
           </div>
           {status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}
           {lastPit && time - lastPit[0] < 18 && <div className="pit-notice">Pit stop · #{lastPit[1]} · lap {lastPit[2]}</div>}
+          {replay && (!hasStarted || countdown !== null) && <div className="race-start-hud">
+            {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start race</button> : <div className="race-start-countdown" role="status" aria-live="polite"><span>RACE START</span><strong>{countdown}</strong><div className={`start-lights step-${4 - countdown}`} aria-hidden="true"><i /><i /><i /></div></div>}
+          </div>}
           {selected && <div className="selection-card" style={{ '--team': selected.color } as React.CSSProperties}>
             <div><span className="section-eyebrow">DRIVER IN FOCUS</span><button type="button" aria-label="Clear driver selection" onClick={() => setSelectedDriver(null)}>×</button></div>
             <strong>{selected.name} <span>#{selected.number}</span></strong>
             <p>{selected.team} · P{selected.position === 99 ? '–' : selected.position} · Lap {selected.lap}</p>
             <small>{isSelectedStopped ? 'Stopped car · inferred from telemetry' : hasSelectedLocation ? 'Highlighted on the circuit' : 'Location unavailable at this replay time'}</small>
           </div>}
-          <label className="render-setting"><span>VEHICLE DISPLAY</span><span className="render-toggle"><span>Cars</span><input type="checkbox" role="switch" aria-label="Render cars as team-colored dots" checked={carMode === 'dots'} onChange={(event) => setCarMode(event.target.checked ? 'dots' : 'cars')} /><i aria-hidden="true" /><span>Dots</span></span></label>
           <div className="stage-bottomline"><span>Drag to orbit <b>·</b> Scroll to zoom</span><span>Ghost = inferred stop · Recorded locations</span></div>
         </section>
       </main>
 
       <footer className="transport">
-        <div className="replay-label"><span className="section-eyebrow">SESSION REPLAY</span><strong>{isPlaying ? 'Playing' : 'Paused'} <span className={isPlaying ? 'playback-dot active' : 'playback-dot'} /></strong></div>
-        <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(!isPlaying)} aria-label={isPlaying ? 'Pause replay' : 'Play replay'}>
-          {isPlaying ? <span className="pause-icon" /> : <span className="play-icon" />}
+        <div className="replay-label"><span className="section-eyebrow">SESSION REPLAY</span><strong>{countdown !== null ? 'Starting' : isPlaying ? 'Playing' : 'Paused'} <span className={isPlaying ? 'playback-dot active' : 'playback-dot'} /></strong></div>
+        <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(countdown === null && !isPlaying)} aria-label={countdown !== null ? 'Cancel race start' : isPlaying ? 'Pause replay' : 'Play replay'}>
+          {isPlaying || countdown !== null ? <span className="pause-icon" /> : <span className="play-icon" />}
         </button>
         <div className="timeline-wrap">
           <div className="time-labels"><span>{clockLabel(time)}</span><span>{replay ? clockLabel(replay.duration) : '00:00:00'}</span></div>
