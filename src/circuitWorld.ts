@@ -4,7 +4,7 @@ import { createLandmark } from './circuitLandmarks'
 import { createRaceLighting, getRaceDaylight, getRaceLocalHour } from './raceLighting'
 import type { WeatherTimeline } from './raceWeather'
 import { createRain, createRainSplashes } from './rainEffect'
-import type { Replay } from './replay'
+import { lappedDriversAt, type Replay } from './replay'
 import { createProjection } from './circuitGeometry'
 import { createCarKit } from './carModel'
 import type { GraphicsQuality } from './graphicsQuality'
@@ -171,13 +171,19 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
   }
   const carKit = createCarKit(isDetailed)
   const rainLights: THREE.Mesh[] = []
+  const setCarLapped = new Map<number, (isLapped: boolean) => void>()
   const cars = new Map(replay.drivers.map((driver) => {
-    const { group: car, paint, rainLight } = carKit.createCar(driver)
+    const { group: car, paint, rainLight, setLapped } = carKit.createCar(driver)
     carPaints.push(paint)
     rainLights.push(rainLight)
+    setCarLapped.set(driver.number, setLapped)
     scene.add(car)
     return [driver.number, car] as const
   }))
+  const updateCarLivery = (time: number) => {
+    const lapped = lappedDriversAt(replay.laps, time)
+    setCarLapped.forEach((setLapped, driver) => setLapped(lapped.has(driver)))
+  }
   const spray = createCarSpray(cars.size)
   scene.add(spray.points)
   if (isDetailed) cloudShadows.applyTo(sceneMaterials(scene))
@@ -193,5 +199,5 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
     rainLights.forEach((light) => { light.visible = isLit })
     spray.update([...cars.values()], isDetailed ? currentWeather.wetness : 0, deltaSeconds)
   }
-  return { scene, overlay, cars, updateCarEffects, project, width, depth, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
+  return { scene, overlay, cars, updateCarEffects, updateCarLivery, project, width, depth, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
 }

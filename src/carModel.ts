@@ -240,9 +240,20 @@ export function createCarKit(isDetailed: boolean) {
     const paint = isDetailed
       ? new THREE.MeshPhysicalMaterial({ ...finishes, clearcoat: 1, clearcoatMap: surfaces, clearcoatRoughness: 0.08 })
       : new THREE.MeshStandardMaterial(finishes)
+    const livery = { saturation: { value: 1 }, brightness: { value: 1 } }
+    addShaderPatch(paint, 'lapped-livery-v1', (shader) => {
+      Object.assign(shader.uniforms, { liverySaturation: livery.saturation, liveryBrightness: livery.brightness })
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+        float liveryLuminance = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+        diffuseColor.rgb = mix( vec3( liveryLuminance ), diffuseColor.rgb, liverySaturation ) * liveryBrightness;`)
+      shader.fragmentShader = `uniform float liverySaturation;\nuniform float liveryBrightness;\n${shader.fragmentShader}`
+    })
     // The night glow follows the livery colours rather than tinting carbon parts.
     addShaderPatch(paint, 'livery-glow-v1', (shader) => {
-      shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vColor.rgb;')
+      shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance *= vColor.rgb;
+        float liveryEmission = dot( totalEmissiveRadiance, vec3( 0.2126, 0.7152, 0.0722 ) );
+        totalEmissiveRadiance = mix( vec3( liveryEmission ), totalEmissiveRadiance, liverySaturation ) * liveryBrightness;`)
     })
     const body = new THREE.Mesh(createBodyGeometry(team, accent), paint)
     body.castShadow = body.receiveShadow = true
@@ -256,7 +267,15 @@ export function createCarKit(isDetailed: boolean) {
     const group = new THREE.Group()
     group.add(body, rainLight, shadow)
     group.visible = false
-    return { group, paint, rainLight }
+    return {
+      group,
+      paint,
+      rainLight,
+      setLapped: (isLapped: boolean) => {
+        livery.saturation.value = isLapped ? 0.6 : 1
+        livery.brightness.value = isLapped ? 0.82 : 1
+      },
+    }
   }
   return { createCar }
 }

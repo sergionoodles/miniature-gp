@@ -107,6 +107,12 @@ export function lapsAt(events: LapEvent[], time: number): Map<number, number> {
   return laps
 }
 
+export function lappedDriversAt(events: LapEvent[], time: number): Set<number> {
+  const laps = lapsAt(events, time)
+  const leaderLap = Math.max(0, ...laps.values())
+  return new Set([...laps].filter(([, lap]) => leaderLap - lap >= 1).map(([driver]) => driver))
+}
+
 export function raceStatus(events: RaceEvent[], time: number): string {
   let status = 'Racing'
   for (const [eventTime, category, , message] of events) {

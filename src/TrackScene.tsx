@@ -42,7 +42,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const { scene, overlay, cars, project, width, depth, track, trackHeightAt, updateAtmosphere, updateCarEffects } = buildCircuit(replay, circuit, weatherAt, quality)
+    const { scene, overlay, cars, project, width, depth, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = buildCircuit(replay, circuit, weatherAt, quality)
     const camera = new THREE.OrthographicCamera(-130, 130, 100, -100, 0.1, 1000)
     let pipeline: ReturnType<typeof createSceneRenderer>
     try {
@@ -190,6 +190,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
         }
       }
       updateCarEffects(deltaSeconds)
+      updateCarLivery(timeRef.current)
       controls.update()
       pipeline.render({ ...look, polarAngle: controls.getPolarAngle() })
       if (import.meta.env.DEV && now - lastDiagnostic > 1000) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { carLocation, isReplay, notificationsBetween, raceStatus, type RaceEvent, type Replay } from './replay'
+import { carLocation, isReplay, lappedDriversAt, notificationsBetween, raceStatus, type RaceEvent, type Replay } from './replay'
 
 describe('carLocation', () => {
   it('interpolates car movement at replay time', () => {
@@ -15,6 +15,13 @@ describe('carLocation', () => {
     expect(carLocation(samples, 0)).toBeNull()
     expect(carLocation(samples, 0, true)).toEqual({ x: 4, y: 6, heading: Math.atan2(1, 1) })
   })
+})
+
+it('marks only drivers at least one completed lap behind the leader', () => {
+  const laps: [number, number, number][] = [[1, 1, 1], [2, 2, 1], [3, 1, 2], [4, 3, 1]]
+  expect(lappedDriversAt(laps, 3.5)).toEqual(new Set([2]))
+  expect(lappedDriversAt(laps, 4)).toEqual(new Set([2, 3]))
+  expect(lappedDriversAt(laps, 0)).toEqual(new Set())
 })
 
 it('shows the red flag until the session resumes', () => {
