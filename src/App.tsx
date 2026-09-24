@@ -8,6 +8,7 @@ type RaceOption = { id: string; url: string; label: string; circuit: string; gra
 const CIRCUIT_PREVIEW_OPTIONS: RaceOption[] = [
   { id: 'albert-park-preview', url: '', label: 'Albert Park · Circuit preview', circuit: 'Albert Park Circuit', grandPrix: 'Circuit preview', location: 'Melbourne', countryCode: 'AUS', date: '', laps: 0 },
   { id: 'bahrain-preview', url: '', label: 'Bahrain · Circuit preview', circuit: 'Bahrain International Circuit', grandPrix: 'Circuit preview', location: 'Sakhir', countryCode: 'BHR', date: '', laps: 0 },
+  { id: 'jeddah-preview', url: '', label: 'Jeddah · Circuit preview', circuit: 'Jeddah Corniche Circuit', grandPrix: 'Circuit preview', location: 'Jeddah', countryCode: 'SAU', date: '', laps: 0 },
 ]
 const FALLBACK_RACES: RaceOption[] = [
   ...CIRCUIT_PREVIEW_OPTIONS,
