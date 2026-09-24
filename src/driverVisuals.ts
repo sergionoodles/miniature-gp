@@ -2,6 +2,10 @@ import * as THREE from 'three'
 import { createLabel } from './sceneAssets'
 import type { Driver } from './replay'
 
+export function activeHoverDriver(hoveredDriver: number | null, showStartingGrid: boolean): number | null {
+  return showStartingGrid ? null : hoveredDriver
+}
+
 export function createGhost(driver: Driver) {
   const canvas = document.createElement('canvas')
   canvas.width = 128

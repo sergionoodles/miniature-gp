@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
 import { frameCircuitCameraInPlace, interpolateStartPose, START_TRANSITION_SECONDS, startingGridLocations } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
-import { createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
+import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
@@ -128,10 +128,11 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
     let previousHover: number | null = null
     const animate = (now: number) => {
       const options = optionsRef.current
-      updateLighting(timeRef.current, options.hoveredDriver !== null)
-      if (previousHover !== options.hoveredDriver) {
-        isolateDriver(options.hoveredDriver)
-        previousHover = options.hoveredDriver
+      const activeHover = activeHoverDriver(options.hoveredDriver, options.showStartingGrid)
+      updateLighting(timeRef.current, activeHover !== null)
+      if (previousHover !== activeHover) {
+        isolateDriver(activeHover)
+        previousHover = activeHover
       }
       marker.visible = false
       for (const [number, car] of cars) {
@@ -163,7 +164,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
           car.position.copy(pose.position)
           car.rotation.y = pose.rotation
         }
-        if ((options.hoveredDriver ?? options.selectedDriver) === number) {
+        if ((activeHover ?? options.selectedDriver) === number) {
           marker.visible = true
           marker.position.copy(car.position).setY(0.16)
           if (label) {
@@ -175,7 +176,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       controls.update()
       renderer.render(scene, camera)
       if (import.meta.env.DEV && now - lastDiagnostic > 1000) {
-        container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom, polarAngle: controls.getPolarAngle(), isolated: options.hoveredDriver, ghosts: [...ghosts].filter(([, ghost]) => ghost.visible).map(([number]) => number) })
+        container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom, polarAngle: controls.getPolarAngle(), isolated: activeHover, ghosts: [...ghosts].filter(([, ghost]) => ghost.visible).map(([number]) => number) })
         lastDiagnostic = now
       }
       frame = requestAnimationFrame(animate)

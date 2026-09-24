@@ -6,6 +6,8 @@ export type LapEvent = [time: number, driver: number, lap: number]
 export type PitEvent = [time: number, driver: number, lap: number, duration: number | null]
 export type WeatherEvent = [time: number, rainfall: number, air: number, track: number]
 export type RaceEvent = [time: number, category: string, flag: string | null, message: string]
+export type ReplayNotification = { id: string; time: number; title: string; detail: string; drivers?: [{ name: string; color: string }, { name: string; color: string }] }
+export const OVERTAKE_NOTIFICATION_CUTOFF = 50
 export type Stint = [driver: number, firstLap: number, lastLap: number, compound: string]
 
 export type Driver = {
@@ -121,6 +123,43 @@ export function raceStatus(events: RaceEvent[], time: number): string {
     }
   }
   return status
+}
+
+export function notificationsBetween(replay: Replay, from: number, to: number, speed = 10): ReplayNotification[] {
+  const notifications: ReplayNotification[] = []
+  const drivers = new Map(replay.drivers.map((driver) => [driver.number, driver]))
+  if (speed < OVERTAKE_NOTIFICATION_CUTOFF) replay.overtakes.forEach(([time, overtaking, overtaken, position], index) => {
+    if (time <= from || time > to) return
+    const overtakingDriver = drivers.get(overtaking)
+    const overtakenDriver = drivers.get(overtaken)
+    notifications.push({
+      id: `overtake-${index}`, time, title: 'Position gained', detail: `Overtake · P${position}`,
+      drivers: [
+        { name: overtakingDriver?.name ?? `#${overtaking}`, color: overtakingDriver?.color ?? '#fff' },
+        { name: overtakenDriver?.name ?? `#${overtaken}`, color: overtakenDriver?.color ?? '#fff' },
+      ],
+    })
+  })
+  replay.pits.forEach(([time, driver, lap], index) => {
+    if (time > from && time <= to) notifications.push({ id: `pit-${index}`, time, title: 'Pit stop', detail: `${drivers.get(driver)?.code ?? `#${driver}`} · Lap ${lap}` })
+  })
+  replay.raceControl.forEach(([time, category, flag, message], index) => {
+    if (time <= from || time > to) return
+    const title = category === 'Flag' && flag ? `${flag[0]}${flag.slice(1).toLowerCase()} flag`
+      : message === 'SESSION ABORTED' ? 'Race suspended'
+      : message === 'SESSION STARTED' && time > 0 ? 'Race resumed'
+      : category === 'SafetyCar' ? message === 'VSC ENDING' ? 'Virtual safety car ending' : message.toLowerCase().replace(/^./, (letter) => letter.toUpperCase())
+      : null
+    if (title) notifications.push({ id: `control-${index}`, time, title, detail: category === 'Flag' ? message : '' })
+  })
+  replay.weather.forEach(([time, rainfall, air, track], index) => {
+    const previous = replay.weather[index - 1]
+    if (!previous || time <= from || time > to) return
+    const hasRainChanged = Boolean(rainfall) !== Boolean(previous[1])
+    if (!hasRainChanged && Math.abs(air - previous[2]) < 1.5 && Math.abs(track - previous[3]) < 1.5) return
+    notifications.push({ id: `weather-${index}`, time, title: hasRainChanged ? rainfall ? 'Rain started' : 'Track drying' : 'Temperature changed', detail: `Air ${air.toFixed(1)}° · Track ${track.toFixed(1)}°` })
+  })
+  return notifications.sort((first, second) => first.time - second.time)
 }
 
 export function clockLabel(seconds: number): string {

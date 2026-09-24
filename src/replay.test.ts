@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { carLocation, isReplay, raceStatus, type RaceEvent } from './replay'
+import { carLocation, isReplay, notificationsBetween, raceStatus, type RaceEvent, type Replay } from './replay'
 
 describe('carLocation', () => {
   it('interpolates car movement at replay time', () => {
@@ -32,4 +32,31 @@ it('requires grid and overtake data in a replay', () => {
   expect(isReplay(replay)).toBe(true)
   expect(isReplay({ ...replay, overtakes: undefined })).toBe(false)
   expect(isReplay({ ...replay, startingGrid: undefined })).toBe(false)
+})
+
+it('collects race events and weather changes crossed during playback in time order', () => {
+  const replay = {
+    drivers: [
+      { number: 10, code: 'GAS', name: 'Pierre Gasly', color: '#00A1E8' },
+      { number: 16, code: 'LEC', name: 'Charles Leclerc', color: '#ED1131' },
+    ],
+    overtakes: [[10, 10, 16, 2]],
+    pits: [[12, 16, 3, null]],
+    raceControl: [[11, 'Flag', 'YELLOW', 'YELLOW FLAG'], [13, 'SessionStatus', null, 'SESSION ABORTED']],
+    weather: [[0, 0, 25, 30], [14, 1, 24, 29], [16, 1, 24, 31]],
+  } as Replay
+  expect(notificationsBetween(replay, 9, 15).map((notice) => notice.title)).toEqual([
+    'Position gained', 'Yellow flag', 'Pit stop', 'Race suspended', 'Rain started',
+  ])
+  expect(notificationsBetween(replay, 10, 11)).toHaveLength(1)
+  expect(notificationsBetween(replay, 14, 15)).toHaveLength(0)
+  expect(notificationsBetween(replay, 15, 16).map((notice) => notice.title)).toEqual(['Temperature changed'])
+  expect(notificationsBetween(replay, 9, 10)[0]).toMatchObject({
+    detail: 'Overtake · P2',
+    drivers: [{ name: 'Pierre Gasly', color: '#00A1E8' }, { name: 'Charles Leclerc', color: '#ED1131' }],
+  })
+  expect(notificationsBetween(replay, 9, 15, 50).map((notice) => notice.title)).toEqual([
+    'Yellow flag', 'Pit stop', 'Race suspended', 'Rain started',
+  ])
+  expect(notificationsBetween(replay, 9, 15, 100).some((notice) => notice.id.startsWith('overtake-'))).toBe(false)
 })
