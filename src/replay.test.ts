@@ -46,17 +46,18 @@ it('collects race events and weather changes crossed during playback in time ord
     weather: [[0, 0, 25, 30], [14, 1, 24, 29], [16, 1, 24, 31]],
   } as Replay
   expect(notificationsBetween(replay, 9, 15).map((notice) => notice.title)).toEqual([
-    'Position gained', 'Yellow flag', 'Pit stop', 'Race suspended', 'Rain started',
+    'Position gained', 'Yellow flag', 'LEC · Pit stop', 'Race suspended', 'Rain started',
   ])
   expect(notificationsBetween(replay, 10, 11)).toHaveLength(1)
   expect(notificationsBetween(replay, 14, 15)).toHaveLength(0)
   expect(notificationsBetween(replay, 15, 16).map((notice) => notice.title)).toEqual(['Temperature changed'])
   expect(notificationsBetween(replay, 9, 10)[0]).toMatchObject({
     detail: 'Overtake · P2',
-    drivers: [{ name: 'Pierre Gasly', color: '#00A1E8' }, { name: 'Charles Leclerc', color: '#ED1131' }],
+    drivers: [{ name: 'GAS', color: '#00A1E8' }, { name: 'LEC', color: '#ED1131' }],
   })
+  expect(notificationsBetween(replay, 11, 13)).toContainEqual(expect.objectContaining({ title: 'LEC · Pit stop', detail: 'Lap 3' }))
   expect(notificationsBetween(replay, 9, 15, 50).map((notice) => notice.title)).toEqual([
-    'Yellow flag', 'Pit stop', 'Race suspended', 'Rain started',
+    'Yellow flag', 'LEC · Pit stop', 'Race suspended', 'Rain started',
   ])
   expect(notificationsBetween(replay, 9, 15, 100).some((notice) => notice.id.startsWith('overtake-'))).toBe(false)
 })

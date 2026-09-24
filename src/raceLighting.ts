@@ -30,7 +30,7 @@ const OVERCAST_FILL_GAIN = 0.35
 const RAIN_SKY_DARKENING = 0.55
 // Visibility shrinks from clear-day haze to a curtain of spray in heavy rain.
 const CLEAR_FOG: [number, number] = [210, 540]
-const RAIN_FOG: [number, number] = [160, 520]
+const RAIN_FOG: [number, number] = [120, 420]
 const OVERCAST_FOG_SHARE = 0.25
 const HAZE_AIR_TEMPERATURE: [number, number] = [26, 36]
 const COLD_AIR_TEMPERATURE: [number, number] = [8, 18]

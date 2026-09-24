@@ -326,7 +326,7 @@ export default function App() {
           <div className="notification-stack" aria-label="Race notifications" aria-live="polite">
             {notifications.map((notice) => <div className="race-toast" key={notice.id}>
               {notice.drivers
-                ? <strong className="overtake-heading"><span style={{ color: notice.drivers[0].color }}>{notice.drivers[0].name}</span><span>past</span><span style={{ color: notice.drivers[1].color }}>{notice.drivers[1].name}</span></strong>
+                ? <strong className="overtake-heading"><span style={{ color: notice.drivers[0].color }}>{notice.drivers[0].name}</span><span>passed</span><span style={{ color: notice.drivers[1].color }}>{notice.drivers[1].name}</span></strong>
                 : <strong>{notice.title}</strong>}
               {notice.detail && <span>{notice.detail}</span>}
             </div>)}

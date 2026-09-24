@@ -135,13 +135,13 @@ export function notificationsBetween(replay: Replay, from: number, to: number, s
     notifications.push({
       id: `overtake-${index}`, time, title: 'Position gained', detail: `Overtake · P${position}`,
       drivers: [
-        { name: overtakingDriver?.name ?? `#${overtaking}`, color: overtakingDriver?.color ?? '#fff' },
-        { name: overtakenDriver?.name ?? `#${overtaken}`, color: overtakenDriver?.color ?? '#fff' },
+        { name: overtakingDriver?.code ?? `#${overtaking}`, color: overtakingDriver?.color ?? '#fff' },
+        { name: overtakenDriver?.code ?? `#${overtaken}`, color: overtakenDriver?.color ?? '#fff' },
       ],
     })
   })
   replay.pits.forEach(([time, driver, lap], index) => {
-    if (time > from && time <= to) notifications.push({ id: `pit-${index}`, time, title: 'Pit stop', detail: `${drivers.get(driver)?.code ?? `#${driver}`} · Lap ${lap}` })
+    if (time > from && time <= to) notifications.push({ id: `pit-${index}`, time, title: `${drivers.get(driver)?.code ?? `#${driver}`} · Pit stop`, detail: `Lap ${lap}` })
   })
   replay.raceControl.forEach(([time, category, flag, message], index) => {
     if (time <= from || time > to) return
