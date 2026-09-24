@@ -21,10 +21,22 @@ const formatRaceDate = (date: string) => {
 const SPEEDS = [1, 2, 5, 10, 25, 50, 100]
 const DEFAULT_SPEED = 10
 const NOTIFICATION_DURATION = 6000
+const routeFromPath = (pathname: string) => {
+  const match = pathname.match(/^\/(\d{4})\/([^/]+)\/?$/)
+  return match ? { year: Number(match[1]), circuitSlug: match[2] } : null
+}
+const circuitSlug = (circuit: string) => circuit
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-|-$/g, '')
+const racePath = (year: number, race: RaceOption) => `/${year}/${circuitSlug(race.circuit)}`
 
 export default function App() {
   const [years, setYears] = useState([2026])
-  const [year, setYear] = useState(2026)
+  const [year, setYear] = useState(() => routeFromPath(window.location.pathname)?.year ?? 2026)
+  const [requestedCircuitSlug, setRequestedCircuitSlug] = useState(() => routeFromPath(window.location.pathname)?.circuitSlug ?? null)
   const [races, setRaces] = useState(FALLBACK_RACES)
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
@@ -43,7 +55,7 @@ export default function App() {
   const isPlayingRef = useRef(false)
   const speedRef = useRef(DEFAULT_SPEED)
 
-  const selectRace = (nextRaceId: string) => {
+  const selectRace = (nextRaceId: string, options = races, updateHistory = true) => {
     isPlayingRef.current = false
     timeRef.current = 0
     previousNotificationTimeRef.current = 0
@@ -57,6 +69,8 @@ export default function App() {
     setHoveredDriver(null)
     setNotifications([])
     setRaceId(nextRaceId)
+    const nextRace = options.find((option) => option.id === nextRaceId)
+    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(year, nextRace))
   }
 
   useEffect(() => {
@@ -70,7 +84,7 @@ export default function App() {
         if (!Array.isArray(value) || !value.length || !value.every((item) => Number.isInteger(item))) throw new Error('Season index is invalid.')
         const availableYears = [...value].sort((first: number, second: number) => second - first)
         setYears(availableYears)
-        setYear(availableYears[0])
+        setYear((current) => availableYears.includes(current) ? current : availableYears[0])
       })
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === 'AbortError') return
@@ -92,14 +106,32 @@ export default function App() {
         if (!Array.isArray(value) || !value.length || !value.every(isRaceOption)) throw new Error('Race catalog is invalid.')
         const options = [...value].sort((first, second) => second.date.localeCompare(first.date))
         setRaces(options)
-        selectRace(options[0].id)
+        const requestedRace = requestedCircuitSlug ? options.find((option) => circuitSlug(option.circuit) === requestedCircuitSlug) : undefined
+        const nextRace = requestedRace ?? options[0]
+        selectRace(nextRace.id, options, false)
+        window.history.replaceState(null, '', racePath(year, nextRace))
       })
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === 'AbortError') return
         console.error('Using bundled race list:', cause)
       })
     return () => controller.abort()
-  }, [year])
+  }, [year, requestedCircuitSlug])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = routeFromPath(window.location.pathname)
+      if (!route) return
+      setRequestedCircuitSlug(route.circuitSlug)
+      setYear(route.year)
+      if (route.year === year) {
+        const matchingRace = races.find((option) => circuitSlug(option.circuit) === route.circuitSlug)
+        if (matchingRace) selectRace(matchingRace.id, races, false)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [year, races])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -238,7 +270,7 @@ export default function App() {
           </div>
         </div>
         <div className="race-picker" role="group" aria-label="Selected race">
-          <label>Season<select aria-label="Season" value={year} onChange={(event) => setYear(Number(event.target.value))}>{years.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+          <label>Season<select aria-label="Season" value={year} onChange={(event) => { setRequestedCircuitSlug(circuitSlug(race.circuit)); setYear(Number(event.target.value)) }}>{years.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
           <label>Grand Prix<select aria-label="Grand Prix" value={race.id} onChange={(event) => selectRace(event.target.value)}>
             {races.map((option) => <option key={option.id} value={option.id}>{option.label}{option.date ? ` · ${formatRaceDate(option.date)}` : ''}</option>)}
           </select></label>
