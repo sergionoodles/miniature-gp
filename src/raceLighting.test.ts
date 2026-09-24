@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Scene, Color, DirectionalLight, Fog, Light } from 'three'
-import { createRaceLighting, getRaceDaylight } from './raceLighting'
+import { createRaceLighting, getRaceDaylight, sunDirection } from './raceLighting'
 import type { WeatherState } from './raceWeather'
 
 describe('race lighting from local time', () => {
@@ -90,5 +90,26 @@ describe('race lighting from weather', () => {
     const clearNight = totalLight(scene)
     updateLighting(0, { ...CLEAR, cloudCover: 0.8 }, false)
     expect(totalLight(scene)).toBeCloseTo(clearNight)
+  })
+})
+
+describe('sun path through the race day', () => {
+  it('climbs from a low morning sun to a high midday sun and sinks again by evening', () => {
+    const morning = sunDirection(7)
+    const midday = sunDirection(12)
+    const evening = sunDirection(18)
+    expect(midday.y).toBeGreaterThan(morning.y)
+    expect(midday.y).toBeGreaterThan(evening.y)
+  })
+  it('stays above the horizon and behind the default view so shadows fall toward the viewer', () => {
+    for (let hour = 0; hour < 24; hour++) {
+      const direction = sunDirection(hour)
+      expect(direction.y).toBeGreaterThan(0)
+      expect(direction.z).toBeLessThan(0)
+    }
+  })
+  it('moves across the sky as the race runs and falls back to an afternoon sun without local time', () => {
+    expect(sunDirection(15).x).not.toBeCloseTo(sunDirection(17).x)
+    expect(sunDirection(null).equals(sunDirection(14))).toBe(true)
   })
 })

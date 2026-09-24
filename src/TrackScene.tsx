@@ -4,9 +4,17 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
 import { frameCircuitCameraInPlace, interpolateStartPose, START_TRANSITION_SECONDS, startingGridLocations } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
+import { createSceneRenderer } from './sceneRenderer'
+import { loadGraphicsQuality, saveGraphicsQuality, type GraphicsQuality } from './graphicsQuality'
 import type { WeatherTimeline } from './raceWeather'
-import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
+import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, createSelectionMarker, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
+
+const MARKER_PULSE_SPEED = 0.005
+const MARKER_PULSE_SCALE = 0.08
+const LABEL_LIFT = 1.4
+// Slightly under 1000 / 30, so a 60 Hz display reliably draws every second refresh.
+const STANDARD_FRAME_MS = 30
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
 type Props = {
@@ -26,6 +34,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
   const [view, setView] = useState<'overview' | 'top'>('overview')
+  const [quality, setQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, showStartingGrid } }, [selectedDriver, hoveredDriver, showStartingGrid])
@@ -33,28 +42,23 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    let renderer: THREE.WebGLRenderer
+    const { scene, overlay, cars, project, width, depth, track, trackHeightAt, updateAtmosphere, updateCarEffects } = buildCircuit(replay, circuit, weatherAt, quality)
+    const camera = new THREE.OrthographicCamera(-130, 130, 100, -100, 0.1, 1000)
+    let pipeline: ReturnType<typeof createSceneRenderer>
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true })
+      pipeline = createSceneRenderer(scene, overlay, camera, quality)
     } catch {
       setError('The 3D view needs WebGL. Try a browser with hardware acceleration enabled. Race timing and playback are still available.')
       return
     }
-    const { scene, cars, project, width, depth, track, trackHeightAt, updateAtmosphere } = buildCircuit(replay, circuit, weatherAt)
+    const { renderer } = pipeline
     const gridLocations = startingGridLocations(track, replay.startingGrid)
     const ghosts = new Map(replay.drivers.map((driver) => {
       const ghost = createGhost(driver)
-      scene.add(ghost)
+      overlay.add(ghost)
       return [driver.number, ghost] as const
     }))
-    const camera = new THREE.OrthographicCamera(-130, 130, 100, -100, 0.1, 1000)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
-    renderer.outputColorSpace = THREE.SRGBColorSpace
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.18
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFShadowMap
-    const canvas = renderer.domElement
+    const canvas = pipeline.canvas
     canvas.tabIndex = 0
     canvas.setAttribute('aria-label', 'Circuit view. Drag to orbit, scroll to zoom. Arrow keys pan. Select a driver in the running order to highlight their car.')
     container.appendChild(canvas)
@@ -62,7 +66,8 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     controls.minZoom = 0.7
     controls.maxZoom = 3
     controls.maxPolarAngle = Math.PI * 0.3
-    controls.enableDamping = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    controls.enableDamping = !isReducedMotion
     controls.dampingFactor = 0.12
     controls.listenToKeyEvents(canvas)
     const resetCamera = (top: boolean) => {
@@ -99,16 +104,14 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       if (!viewportWidth || !viewportHeight) return
       const sidebar = window.innerWidth > 760 ? 286 : 0
       frameCircuitCameraInPlace(camera, viewportWidth, viewportHeight, width, depth, sidebar)
-      renderer.setSize(viewportWidth, viewportHeight)
+      pipeline.setSize(viewportWidth, viewportHeight)
     }
     const observer = new ResizeObserver(resize)
     observer.observe(container)
     resize()
-    const marker = new THREE.Mesh(new THREE.RingGeometry(1.8, 2.1, 40), new THREE.MeshBasicMaterial({ color: 0xe56c3d, side: THREE.DoubleSide, depthTest: false }))
-    marker.rotation.x = -Math.PI / 2
-    marker.renderOrder = 4
-    scene.add(marker)
-    const labels = createDriverLabels(replay.drivers, scene)
+    const marker = createSelectionMarker()
+    overlay.add(marker)
+    const labels = createDriverLabels(replay.drivers, overlay)
     const isolateDriver = createHoverIsolation(scene, cars)
     const pointerStart = new THREE.Vector2()
     const raycaster = new THREE.Raycaster()
@@ -129,10 +132,17 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     let lastDiagnostic = 0
     let previousHover: number | null = null
     let previousFrame = performance.now()
+    // Standard quality draws at most 30 frames a second, halving GPU work on high refresh screens.
+    const minimumFrameMs = quality === 'high' ? 0 : STANDARD_FRAME_MS
     const animate = (now: number) => {
+      if (now - previousFrame < minimumFrameMs) {
+        frame = requestAnimationFrame(animate)
+        return
+      }
       const options = optionsRef.current
       const activeHover = activeHoverDriver(options.hoveredDriver, options.showStartingGrid)
-      updateAtmosphere(timeRef.current, activeHover !== null, (now - previousFrame) / 1000)
+      const deltaSeconds = (now - previousFrame) / 1000
+      const look = updateAtmosphere(timeRef.current, activeHover !== null, deltaSeconds)
       previousFrame = now
       if (previousHover !== activeHover) {
         isolateDriver(activeHover)
@@ -172,14 +182,16 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
         if ((activeHover ?? options.selectedDriver) === number) {
           marker.visible = true
           marker.position.copy(car.position).setY(car.position.y + 0.08)
+          if (!isReducedMotion) marker.scale.setScalar(1 + Math.sin(now * MARKER_PULSE_SPEED) * MARKER_PULSE_SCALE)
           if (label) {
             label.visible = true
-            label.position.copy(car.position).add(new THREE.Vector3(0, 4, 0))
+            label.position.copy(car.position).add(new THREE.Vector3(0, LABEL_LIFT, 0))
           }
         }
       }
+      updateCarEffects(deltaSeconds)
       controls.update()
-      renderer.render(scene, camera)
+      pipeline.render({ ...look, polarAngle: controls.getPolarAngle() })
       if (import.meta.env.DEV && now - lastDiagnostic > 1000) {
         container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom, polarAngle: controls.getPolarAngle(), isolated: activeHover, ghosts: [...ghosts].filter(([, ghost]) => ghost.visible).map(([number]) => number) })
         lastDiagnostic = now
@@ -196,24 +208,36 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       canvas.remove()
       const materials = new Set<THREE.Material>()
       const textures = new Set<THREE.Texture>()
-      scene.traverse((object) => {
+      const disposeObject = (object: THREE.Object3D) => {
         if (object instanceof THREE.InstancedMesh) object.dispose()
         if (object instanceof THREE.Mesh) object.geometry.dispose()
         if (object instanceof THREE.Mesh || object instanceof THREE.Sprite) {
           const values = Array.isArray(object.material) ? object.material : [object.material]
           values.forEach((material: THREE.Material) => materials.add(material))
         }
+        if (object instanceof THREE.Points || object instanceof THREE.LineSegments) {
+          object.geometry.dispose()
+          materials.add(object.material)
+        }
         if (object instanceof THREE.DirectionalLight) object.shadow.dispose()
-      })
+      }
+      scene.traverse(disposeObject)
+      overlay.traverse(disposeObject)
       materials.forEach((material) => {
         Object.values(material).forEach((value: unknown) => { if (value instanceof THREE.Texture) textures.add(value) })
         material.dispose()
       })
       textures.forEach((texture) => texture.dispose())
-      renderer.dispose()
+      pipeline.dispose()
       actionRef.current = () => {}
     }
-  }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver])
+  }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, quality])
+
+  const toggleQuality = () => {
+    const next = quality === 'high' ? 'standard' : 'high'
+    setQuality(next)
+    saveGraphicsQuality(next)
+  }
 
   const changeView = (next: 'overview' | 'top') => {
     setView(next)
@@ -228,6 +252,9 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       <div className="view-switch">
         <button type="button" aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>◈ <span>Orbit</span></button>
         <button type="button" aria-pressed={view === 'top'} onClick={() => changeView('top')}>⊞ <span>Top view</span></button>
+      </div>
+      <div className="view-switch">
+        <button type="button" aria-pressed={quality === 'high'} title={quality === 'high' ? 'High graphics: effects, shadows and ambient occlusion. Select for a lighter mode.' : 'Standard graphics: a lighter scene for any computer. Select for high graphics.'} onClick={toggleQuality}>✦ <span>HD graphics</span></button>
       </div>
       <div className="zoom-controls">
         <button type="button" aria-label="Rotate left" onClick={() => actionRef.current('left')}>↶</button>

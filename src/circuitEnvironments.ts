@@ -30,6 +30,8 @@ export type CircuitEnvironment = {
   skylines: Skyline[]
   mountains?: { side: Side; height: number; color: number; hasSnow: boolean }
   landmarks: Landmark[]
+  // Night races run under trackside floodlights.
+  isFloodlit?: boolean
 }
 
 const PARK: GroundPalette = { low: 0x7e9671, high: 0x54795d, floor: 0x87977c, verge: 0x9caa84 }
@@ -68,13 +70,13 @@ export const CIRCUIT_ENVIRONMENTS: CircuitEnvironment[] = [
     landmarks: [],
   },
   {
-    id: 'bahrain', names: ['bahrain', 'sakhir'], ground: DESERT, relief: 0.6,
+    id: 'bahrain', isFloodlit: true, names: ['bahrain', 'sakhir'], ground: DESERT, relief: 0.6,
     trees: { kinds: ['palm'], density: 0.06 }, outskirts: { density: 0.03, height: 1 },
     water: { color: SEA, features: [] }, skylines: [],
     landmarks: [{ kind: 'controlTower' }],
   },
   {
-    id: 'jeddah', names: ['jeddah'], ground: ARID_COAST, relief: 0.3,
+    id: 'jeddah', isFloodlit: true, names: ['jeddah'], ground: ARID_COAST, relief: 0.3,
     trees: { kinds: ['palm'], density: 0.25 }, outskirts: { density: 0.08, height: 1 },
     water: { color: SEA, features: [{ kind: 'coast', side: 'left', offset: 8 }] },
     skylines: [{ style: 'towers', side: 'right', count: 120, height: [6, 26], distance: [20, 110] }],
@@ -180,7 +182,7 @@ export const CIRCUIT_ENVIRONMENTS: CircuitEnvironment[] = [
     landmarks: [{ kind: 'cityWalls', side: 'back' }, { kind: 'flameTowers' }],
   },
   {
-    id: 'marina-bay', names: ['marina bay', 'singapore'], ground: URBAN, relief: 0.1,
+    id: 'marina-bay', isFloodlit: true, names: ['marina bay', 'singapore'], ground: URBAN, relief: 0.1,
     trees: { kinds: ['palm', 'broadleaf'], density: 0.3 }, outskirts: { density: 0.2, height: 2.5 },
     water: { color: SEA, features: [{ kind: 'coast', side: 'front', offset: 10 }] },
     skylines: [{ style: 'towers', side: 'around', count: 380, height: [10, 40], distance: [9, 120] }],
@@ -208,7 +210,7 @@ export const CIRCUIT_ENVIRONMENTS: CircuitEnvironment[] = [
     landmarks: [],
   },
   {
-    id: 'las-vegas', names: ['las vegas'], ground: ARID_COAST, relief: 0,
+    id: 'las-vegas', isFloodlit: true, names: ['las vegas'], ground: ARID_COAST, relief: 0,
     trees: { kinds: ['palm'], density: 0.08 }, outskirts: { density: 0.02, height: 1 },
     water: { color: LAKE, features: [] },
     skylines: [{ style: 'casino', side: 'around', count: 260, height: [6, 34], distance: [9, 110] }],
@@ -216,14 +218,14 @@ export const CIRCUIT_ENVIRONMENTS: CircuitEnvironment[] = [
     landmarks: [{ kind: 'sphere' }],
   },
   {
-    id: 'lusail', names: ['lusail', 'losail', 'qatar'], ground: DESERT, relief: 0.3,
+    id: 'lusail', isFloodlit: true, names: ['lusail', 'losail', 'qatar'], ground: DESERT, relief: 0.3,
     trees: { kinds: ['palm'], density: 0.05 }, outskirts: { density: 0.02, height: 1 },
     water: { color: SEA, features: [] },
     skylines: [{ style: 'towers', side: 'back', count: 45, height: [6, 24], distance: [110, 190] }],
     landmarks: [{ kind: 'parking' }, { kind: 'parking' }],
   },
   {
-    id: 'yas-marina', names: ['yas marina', 'abu dhabi'], ground: ARID_COAST, relief: 0.1,
+    id: 'yas-marina', isFloodlit: true, names: ['yas marina', 'abu dhabi'], ground: ARID_COAST, relief: 0.1,
     trees: { kinds: ['palm'], density: 0.4 }, outskirts: { density: 0.1, height: 1.5 },
     water: { color: SEA, features: [{ kind: 'coast', side: 'left', offset: 10 }, { kind: 'ponds', count: 4 }] },
     skylines: [{ style: 'resort', side: 'right', count: 60, height: [4, 14], distance: [15, 90] }],

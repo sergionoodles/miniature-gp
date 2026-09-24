@@ -37,8 +37,26 @@ function controlTower() {
   return model([lights], shaft, cab, roof)
 }
 
+// The venue's LED skin, shown as bands of saturated colour that also light it at night.
+function createScreenTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 64
+  canvas.height = 256
+  const context = canvas.getContext('2d')
+  if (context) {
+    const gradient = context.createLinearGradient(0, 0, 0, canvas.height)
+    ;['#ffb347', '#ff5e62', '#c43dff', '#4b3dff', '#1fb6ff'].forEach((color, index, colors) => gradient.addColorStop(index / (colors.length - 1), color))
+    context.fillStyle = gradient
+    context.fillRect(0, 0, canvas.width, canvas.height)
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
 function sphere() {
-  const lights = glowing(0x8b97a8, 0x7a4dff, { roughness: 0.35, metalness: 0.2 })
+  const screen = createScreenTexture()
+  const lights = glowing(0xffffff, 0xffffff, { map: screen, emissiveMap: screen, roughness: 0.35, metalness: 0.1 })
   const globe = new THREE.Mesh(new THREE.SphereGeometry(8, 32, 20).translate(0, 7.2, 0), lights)
   globe.castShadow = true
   return model([lights], globe)
