@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { version } from '../package.json'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
 import { TrackScene } from './TrackScene'
 import { createWeatherTimeline, describeWeather } from './raceWeather'
@@ -267,7 +268,7 @@ export default function App() {
     <div className={`app-shell${isRaining ? ' raining' : ''}`}>
       <header className="topbar">
         <div className="identity">
-          <img className="identity-mark" src="/logo.jpg" alt="" />
+          <img className="identity-mark" src="/logo.svg" alt="" />
           <div>
             <div className="app-name">Miniature GP</div>
           </div>
@@ -302,7 +303,7 @@ export default function App() {
             ))}
             {!replay && <div className="panel-message">{error ?? 'Loading race data…'}</div>}
           </div>
-          <div className="data-credit">Recorded telemetry · <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a></div>
+          <div className="data-credit">Recorded telemetry · <a href="https://openf1.org/" target="_blank" rel="noreferrer"><span className="openf1-open">Open</span><span className="openf1-f1">F1</span></a></div>
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
@@ -355,6 +356,7 @@ export default function App() {
         </div>
         <label className="speed-picker">Speed<select aria-label="Replay speed" value={speed} onChange={(event) => changeSpeed(Number(event.target.value))}>{SPEEDS.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
       </footer>
+      <footer className="app-footer">Race telemetry by <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a><span aria-hidden="true">·</span> Miniature GP <span className="app-version">v{version}</span></footer>
     </div>
   )
 }

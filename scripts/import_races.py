@@ -27,7 +27,8 @@ def local_race_date(session):
     sign = -1 if value.startswith("-") else 1
     hours, minutes, seconds = (int(part) for part in value.lstrip("+-").split(":"))
     offset = timezone(sign * timedelta(hours=hours, minutes=minutes, seconds=seconds))
-    return datetime.fromisoformat(session["date_start"]).astimezone(offset).date().isoformat()
+    date_start = session.get("date_start") or session["start"]
+    return datetime.fromisoformat(date_start).astimezone(offset).date().isoformat()
 
 
 def race_entry(session, meeting, replay, filename, year):
@@ -93,7 +94,8 @@ def refresh_catalogs(directory):
                 entries.append({**prior, "url": f"/data/{year}/{path.name}",
                                 "countryCode": COUNTRY_CODES.get(prior["countryCode"], prior["countryCode"])})
                 continue
-            race = schedule[replay["start"][:10]]
+            replay_date = local_race_date(replay)
+            race = schedule[replay_date]
             location = race["Circuit"]["Location"]
             session = {"session_key": session_key, "date_start": replay["start"],
                        "gmt_offset": replay["gmt_offset"], "circuit_short_name": race["Circuit"]["circuitName"],

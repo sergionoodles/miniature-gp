@@ -42,6 +42,9 @@ select { border: 1px solid var(--hud-border); border-radius: 5px; background: va
 .driver-number { font-family: monospace; font-size: 10px; color: var(--hud-muted); text-align: right; }
 .driver-row.selected .driver-number { color: #fff; }
 .data-credit { padding: 15px 19px; border-top: 1px solid var(--hud-border); font-size: 9px; color: var(--hud-muted); letter-spacing: .5px; }
+.data-credit .openf1-open { color: #fff; }
+.data-credit .openf1-f1 { color: #e10600; }
+.data-credit a { font-weight: 700; letter-spacing: .7px; }
 .panel-message { padding: 25px 19px; line-height: 1.7; }
 .race-stage { position: absolute; inset: 0; flex: 1; min-width: 0; overflow: hidden; background: #09151f; }
 .track-canvas { position: absolute; inset: 0; }
@@ -95,6 +98,9 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .start-lights i { width: 12px; height: 12px; border-radius: 50%; background: #394954; }
 .start-lights.step-1 i:first-child, .start-lights.step-2 i:nth-child(-n+2), .start-lights.step-3 i { background: #f16b59; box-shadow: 0 0 10px #f16b59; }
 .transport { display: flex; align-items: center; flex: 0 0 88px; padding: 0 30px; gap: 24px; background: #0c141ce8; backdrop-filter: blur(18px); border-top: 1px solid var(--hud-border); z-index: 2; }
+.app-footer { flex: 0 0 32px; display: flex; align-items: center; justify-content: center; gap: 6px; border-top: 1px solid var(--hud-border); background: #0c141ce8; color: var(--hud-muted); font-size: 11px; letter-spacing: .3px; }
+.app-footer a { color: #edf1f3; }
+.app-version { color: #edf1f3; }
 .replay-label { flex: 0 0 232px; display: grid; gap: 9px; }
 .replay-label .section-eyebrow { color: var(--hud-muted); }
 .replay-label strong { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
