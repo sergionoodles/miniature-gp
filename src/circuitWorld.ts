@@ -1,11 +1,23 @@
 import * as THREE from 'three'
-import { createRaceLighting } from './raceLighting'
+import { resolveCircuitEnvironment, type CircuitEnvironment } from './circuitEnvironments'
+import { createLandmark } from './circuitLandmarks'
+import { createRaceLighting, getRaceDaylight } from './raceLighting'
 import type { Replay } from './replay'
-import { canPlaceStructure, createProjection, createRibbonGeometry } from './circuitGeometry'
+import { createProjection, createRibbonGeometry } from './circuitGeometry'
 import { box, createCar, createGrandstand, createLabel, createMergedMesh, createPaddock } from './sceneAssets'
+import { addBuildings, addGroves, addTrees, addWater, addYachts } from './sceneryMeshes'
+import { planScenery, type LandmarkPlacement, type StandFootprint } from './sceneryPlan'
+import type { TerrainField } from './terrainField'
 
 const TRACK_WIDTH = 3.2
 const TRACK_SAMPLES = 900
+const TERRAIN_MARGIN = 360
+const TERRAIN_SEGMENTS = 160
+const NIGHT_GLOW = 1.4
+// Mountain share ranges where grass turns to rock and rock to snow.
+const ROCK_LINE: [number, number] = [0.2, 0.42]
+const SNOW_LINE: [number, number] = [0.62, 0.74]
+const SNOW = new THREE.Color(0xf1f4f4)
 
 function createSurfaceTexture(base: string, grain: string) {
   const canvas = document.createElement('canvas')
@@ -25,47 +37,44 @@ function createSurfaceTexture(base: string, grain: string) {
   return texture
 }
 
-function terrainHeight(x: number, z: number, distance: number, width: number, depth: number, isCoastal: boolean) {
-  const wave = (Math.sin(x * 0.08 + Math.cos(z * 0.06)) + Math.cos(z * 0.11 - x * 0.025) + 2) / 4
-  const edge = Math.max(0, Math.min(1, (width / 2 - Math.abs(x)) / 8, (depth / 2 - Math.abs(z)) / 8))
-  return -0.12 + THREE.MathUtils.smoothstep(distance, 6, 18) * edge * wave * (isCoastal ? 5 : 2)
-}
-
-function addTerrain(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boolean, width: number, depth: number, isFlat = false, isDesert = false) {
-  const geometry = new THREE.PlaneGeometry(width, depth, 140, 140).rotateX(-Math.PI / 2)
+function addTerrain(scene: THREE.Scene, field: TerrainField, environment: CircuitEnvironment) {
+  const geometry = new THREE.PlaneGeometry(field.width, field.depth, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS).rotateX(-Math.PI / 2)
   const positions = geometry.getAttribute('position')
   const colors: number[] = []
-  const sand = new THREE.Color(isDesert ? 0xe0c898 : isCoastal ? 0xcfc3a0 : 0x7e9671)
-  const grass = new THREE.Color(isDesert ? 0xc8a878 : isCoastal ? 0x87966b : 0x54795d)
-  const sparseTrack = track.filter((_, index) => index % 6 === 0)
+  const low = new THREE.Color(environment.ground.low)
+  const high = new THREE.Color(environment.ground.high)
+  const rock = new THREE.Color(environment.mountains?.color ?? 0)
   for (let index = 0; index < positions.count; index++) {
     const x = positions.getX(index)
     const z = positions.getZ(index)
-    const distance = Math.min(...sparseTrack.map((point) => Math.hypot(point.x - x, point.z - z)))
     const wave = (Math.sin(x * 0.08 + Math.cos(z * 0.06)) + Math.cos(z * 0.11 - x * 0.025) + 2) / 4
-    positions.setY(index, isFlat ? -0.12 : terrainHeight(x, z, distance, width, depth, isCoastal))
-    const color = sand.clone().lerp(grass, THREE.MathUtils.smoothstep(wave, 0.28, 0.86))
+    const { height, mountain } = field.sample(x, z)
+    positions.setY(index, height)
+    const color = low.clone().lerp(high, THREE.MathUtils.smoothstep(wave, 0.28, 0.86))
+    if (environment.mountains) {
+      color.lerp(rock, THREE.MathUtils.smoothstep(mountain, ROCK_LINE[0], ROCK_LINE[1]))
+      if (environment.mountains.hasSnow) color.lerp(SNOW, THREE.MathUtils.smoothstep(mountain, SNOW_LINE[0], SNOW_LINE[1]))
+    }
     colors.push(color.r, color.g, color.b)
   }
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
   geometry.computeVertexNormals()
   const texture = createSurfaceTexture('#ffffff', '#cccccc')
-  texture.repeat.set(width / 4, depth / 4)
+  texture.repeat.set(field.width / 4, field.depth / 4)
   const ground = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, map: texture, roughness: 1 }))
   ground.receiveShadow = true
   scene.add(ground)
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: isDesert ? 0xcdb487 : 0x87977c, roughness: 1 }))
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: environment.ground.floor, roughness: 1 }))
   floor.rotation.x = -Math.PI / 2
   floor.position.y = -0.3
   floor.receiveShadow = true
   scene.add(floor)
 }
 
-function addTrack(scene: THREE.Scene, track: THREE.Vector3[], isDesert = false) {
+function addTrack(scene: THREE.Scene, track: THREE.Vector3[], vergeColor: number) {
   const asphaltTexture = createSurfaceTexture('#616765', '#828581')
-  // Desert circuits use paved run-off rather than grass verges.
   const surfaces: [number, number, number, number][] = [
-    [7.5, -0.02, 0xc4b99b, 0], [4.5, 0.01, isDesert ? 0x8f918b : 0x9caa84, 0],
+    [7.5, -0.02, 0xc4b99b, 0], [4.5, 0.01, vergeColor, 0],
     [TRACK_WIDTH + 0.22, 0.04, 0xb4d5d8, 0], [TRACK_WIDTH, 0.055, 0x8a9a9f, 0],
   ]
   for (const [width, height, color, offset] of surfaces) {
@@ -110,90 +119,34 @@ function addTrack(scene: THREE.Scene, track: THREE.Vector3[], isDesert = false) 
   scene.add(label)
 }
 
-function addStructures(scene: THREE.Scene, track: THREE.Vector3[], width: number, depth: number) {
-  // Place stands beside actual straight sections, rejecting footprints near another section.
-  const footprints: { center: THREE.Vector3; outward: THREE.Vector3; length: number }[] = []
-  let stands = 0
-  for (let index = 20; index < track.length && stands < 5; index += 90) {
-    const point = track[index]
-    const tangent = track[(index + 12) % track.length].clone().sub(track[(index - 12 + track.length) % track.length]).normalize()
-    const outward = new THREE.Vector3(-tangent.z, 0, tangent.x)
-    if (outward.dot(point) < 0) outward.negate()
-    const position = point.clone().addScaledVector(outward, 10)
-    if (Math.abs(position.x) > width / 2 - 14 || Math.abs(position.z) > depth / 2 - 14) continue
-    const length = 15 + stands % 2 * 7
-    if (!canPlaceStructure(track, position, outward, length)) continue
-    const stand = stands === 0 ? createPaddock(length) : createGrandstand(length)
-    stand.position.copy(position)
+function addStands(scene: THREE.Scene, stands: StandFootprint[]) {
+  stands.forEach(({ center, outward, length }, index) => {
+    const stand = index === 0 ? createPaddock(length) : createGrandstand(length)
+    stand.position.copy(center)
     stand.rotation.y = Math.atan2(outward.x, outward.z)
     scene.add(stand)
-    footprints.push({ center: position, outward, length })
-    stands++
-  }
-  return footprints
+  })
 }
 
-function addScenery(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boolean, width: number, depth: number) {
-  const dummy = new THREE.Object3D()
-  const footprints = addStructures(scene, track, width, depth)
-  const amount = isCoastal ? 340 : 760
-  const trees = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ roughness: 1 }), amount)
-  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.22, 2, 5), new THREE.MeshStandardMaterial({ color: 0x6c6451, roughness: 1 }), amount)
-  const shadows = new THREE.InstancedMesh(new THREE.CircleGeometry(1.8, 10).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x344d37, transparent: true, opacity: 0.13, depthWrite: false }), amount)
-  const sparseTrack = track.filter((_, index) => index % 6 === 0)
-  let count = 0
-  for (let attempt = 0; attempt < amount * 8 && count < amount; attempt++) {
-    const x = (Math.sin(attempt * 127.1 + 7) * 43758.5453 % 1) * (width / 2 - 4)
-    const z = (Math.sin(attempt * 311.7 + 11) * 19873.234 % 1) * (depth / 2 - 4)
-    const distance = Math.min(...sparseTrack.map((point) => Math.hypot(point.x - x, point.z - z)))
-    if (distance < 7 || distance > 60) continue
-    const point = new THREE.Vector3(x, 0, z)
-    if (footprints.some(({ center, outward, length }) => !canPlaceStructure([point], center, outward, length))) continue
-    const elevation = terrainHeight(x, z, distance, width + 360, depth + 360, isCoastal)
-    const size = 0.7 + (attempt % 11) / 10
-    const height = isCoastal ? 0.65 : 2.7
-    dummy.position.set(x, elevation + height * size, z)
-    dummy.scale.set(size * 1.3, size * height * 0.65, size * 1.2)
-    dummy.rotation.set(0, attempt, 0)
-    dummy.updateMatrix()
-    trees.setMatrixAt(count, dummy.matrix)
-    trees.setColorAt(count, new THREE.Color([0x58734d, 0x6f8155, 0x3c624e, 0x899264][attempt % 4]))
-    dummy.scale.set(size, size, size)
-    dummy.position.y = elevation + size * 0.6
-    dummy.updateMatrix()
-    trunks.setMatrixAt(count, dummy.matrix)
-    dummy.position.y = elevation + 0.05
-    dummy.updateMatrix()
-    shadows.setMatrixAt(count++, dummy.matrix)
-  }
-  trees.count = trunks.count = shadows.count = count
-  trees.castShadow = !isCoastal
-  scene.add(trees, shadows)
-  if (!isCoastal) scene.add(trunks)
-  else { trunks.geometry.dispose(); (trunks.material as THREE.Material).dispose() }
+function addLandmarks(scene: THREE.Scene, landmarks: LandmarkPlacement[]) {
+  return landmarks.flatMap(({ kind, x, y, z, rotation }) => {
+    if (kind === 'yachts') return []
+    const { group, nightMaterials } = createLandmark(kind)
+    group.position.set(x, y, z)
+    group.rotation.y = rotation
+    scene.add(group)
+    return nightMaterials
+  })
 }
 
-function addOutskirts(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boolean, width: number, depth: number) {
-  const count = 1800
-  const groves = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 1 }), count)
-  const sparseTrack = track.filter((_, index) => index % 8 === 0)
-  const dummy = new THREE.Object3D()
-  let placed = 0
-  for (let index = 0; index < count * 2 && placed < count; index++) {
-    const x = Math.sin(index * 117.3) * Math.cos(index * 61.9) * width / 2
-    const z = Math.sin(index * 73.1 + 3) * Math.cos(index * 27.7) * depth / 2
-    const distance = Math.min(...sparseTrack.map((point) => Math.hypot(point.x - x, point.z - z)))
-    if (distance < 22) continue
-    const height = (isCoastal ? 1.1 : 3.5) + index % 5 * 0.5
-    dummy.position.set(x, terrainHeight(x, z, distance, width, depth, isCoastal) + height * 0.55, z)
-    dummy.scale.set(2 + index % 3, height, 2 + index % 3)
-    dummy.rotation.y = index
-    dummy.updateMatrix()
-    groves.setMatrixAt(placed, dummy.matrix)
-    groves.setColorAt(placed++, new THREE.Color([0x47684e, 0x5d7857, 0x395b46][index % 3]))
-  }
-  groves.count = placed
-  scene.add(groves)
+function addScenery(scene: THREE.Scene, plan: ReturnType<typeof planScenery>, environment: CircuitEnvironment) {
+  addStands(scene, plan.stands)
+  const landmarkLights = addLandmarks(scene, plan.landmarks)
+  const windowLights = addBuildings(scene, plan.buildings, environment.id)
+  addTrees(scene, plan.trees)
+  addGroves(scene, plan.groves)
+  addYachts(scene, plan.yachts)
+  return windowLights ? [...landmarkLights, windowLights] : landmarkLights
 }
 
 export function buildCircuit(replay: Replay, circuit: string) {
@@ -204,14 +157,20 @@ export function buildCircuit(replay: Replay, circuit: string) {
   const size = bounds.getSize(new THREE.Vector3())
   const width = size.x + 38
   const depth = size.z + 38
-  const isCoastal = circuit.includes('Zandvoort')
+  const environment = resolveCircuitEnvironment(circuit)
+  const plan = planScenery(track, environment, width, depth, width + TERRAIN_MARGIN, depth + TERRAIN_MARGIN)
   const scene = new THREE.Scene()
-  const updateLighting = createRaceLighting(scene, replay)
+  const updateRaceLighting = createRaceLighting(scene, replay)
+  addTerrain(scene, plan.field, environment)
+  addWater(scene, plan.field, environment)
+  addTrack(scene, track, environment.ground.verge)
+  const nightMaterials = addScenery(scene, plan, environment)
+  const updateLighting = (elapsed: number, isIsolated: boolean) => {
+    updateRaceLighting(elapsed, isIsolated)
+    const night = 1 - getRaceDaylight(replay.start, replay.gmt_offset, elapsed)
+    nightMaterials.forEach((material) => { material.emissiveIntensity = night * NIGHT_GLOW })
+  }
   updateLighting(0, false)
-  addTerrain(scene, track, isCoastal, width + 360, depth + 360)
-  addOutskirts(scene, track, isCoastal, width + 360, depth + 360)
-  addTrack(scene, track)
-  addScenery(scene, track, isCoastal, width, depth)
   const cars = new Map(replay.drivers.map((driver) => {
     const car = createCar(driver)
     car.children.forEach((part, index) => { part.castShadow = index === 0 })

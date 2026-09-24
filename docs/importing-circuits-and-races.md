@@ -24,7 +24,7 @@ OpenF1 may restrict API access around live sessions. The fetch helper waits and 
 
 ## How the circuit is rendered
 
-The replay's `track` array contains GPS points from a representative lap. `src/circuitWorld.ts` projects those points into the scene, smooths them into a loop, and builds the road, kerbs, terrain, and procedural scenery at runtime. The scenery is generic; it does not reproduce the real placement of circuit-specific buildings, grandstands, or landmarks. Zandvoort currently receives a coastal terrain treatment.
+The replay's `track` array contains GPS points from a representative lap. `src/circuitWorld.ts` projects those points into the scene, smooths them into a loop, and builds the road, kerbs, terrain, and procedural scenery at runtime. The surrounding environment comes from `src/circuitEnvironments.ts`, a structured version of `docs/circuit_environment_terrain_reference.md`: ground palette, relief, water (coast, river, lake, ponds), tree types, skylines, distant mountains, and landmarks. Circuits are matched by alias words in the catalog's circuit name; circuits without an entry use the default park scenery. Placement is procedural but seeded per circuit, so the same circuit always looks the same. It does not reproduce the real positions of buildings or landmarks, and sides are relative to the scene view because the GPS frame is not north-aligned. To add a circuit, add an entry with its name aliases to `CIRCUIT_ENVIRONMENTS`.
 
 The race picker reads `public/data/years.json` and loads the selected season's catalog. Importing a season with completed races makes it available in the season dropdown.
 

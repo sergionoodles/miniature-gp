@@ -53,6 +53,7 @@ select { border: 1px solid var(--hud-border); border-radius: 5px; background: va
 .stage-kicker { font-family: monospace; font-size: 9px; letter-spacing: 1.5px; display: flex; align-items: center; gap: 10px; }
 .stage-kicker i { width: 21px; height: 1px; background: var(--hud-muted); }
 h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-size: clamp(32px, 3.4vw, 54px); font-weight: 300; letter-spacing: 3px; text-transform: uppercase; line-height: 1.12; }
+.stage-title h1.long-circuit-name { font-size: clamp(26px, 2.8vw, 44px); }
 .stage-title > span:last-child { color: var(--hud-muted); font-size: 11px; }
 .stage-title b, .stage-bottomline b { margin: 0 6px; font-weight: 400; }
 .stage-conditions { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: flex-start; white-space: nowrap; pointer-events: none; }

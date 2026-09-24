@@ -275,7 +275,7 @@ export default function App() {
           <div className="stage-topline">
             <div className="stage-title">
               <span className="stage-kicker">{race.countryCode} / {race.date.slice(0, 4)}</span>
-              <h1>{race.location}</h1>
+              <h1 className={race.location.length > 12 ? 'long-circuit-name' : undefined}>{race.location}</h1>
               <span>{race.grandPrix} <b>·</b> {formatRaceDate(race.date)}</span>
             </div>
           </div>
