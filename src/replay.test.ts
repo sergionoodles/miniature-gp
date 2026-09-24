@@ -9,6 +9,12 @@ describe('carLocation', () => {
   it('does not draw a car across a telemetry gap', () => {
     expect(carLocation([[0, 0, 0], [20, 10, 20]], 10)).toBeNull()
   })
+
+  it('can hold the first fix during the short race start transition', () => {
+    const samples: [number, number, number][] = [[0.8, 4, 6], [1.8, 5, 7]]
+    expect(carLocation(samples, 0)).toBeNull()
+    expect(carLocation(samples, 0, true)).toEqual({ x: 4, y: 6, heading: Math.atan2(1, 1) })
+  })
 })
 
 it('shows the red flag until the session resumes', () => {

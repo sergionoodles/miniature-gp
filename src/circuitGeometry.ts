@@ -5,6 +5,7 @@ const CIRCUIT_SPAN = 180
 const GRID_START_OFFSET = 2
 const GRID_ROW_SPACING = 3.5
 const GRID_LANE_OFFSET = 0.72
+export const START_TRANSITION_SECONDS = 3
 
 export function createProjection(points: [number, number][]) {
   if (!points.length) throw new Error('Circuit requires points')
@@ -40,6 +41,15 @@ export function startingGridLocations(track: THREE.Vector3[], grid: GridEntry[])
     }
   }
   return locations
+}
+
+export function interpolateStartPose(grid: { position: THREE.Vector3; rotation: number }, telemetry: { position: THREE.Vector3; rotation: number }, time: number) {
+  const fraction = THREE.MathUtils.smoothstep(time, 0, START_TRANSITION_SECONDS)
+  const turn = Math.atan2(Math.sin(telemetry.rotation - grid.rotation), Math.cos(telemetry.rotation - grid.rotation))
+  return {
+    position: grid.position.clone().lerp(telemetry.position, fraction),
+    rotation: grid.rotation + turn * fraction,
+  }
 }
 
 export function createRibbonGeometry(points: THREE.Vector3[], width: number, height: number, offset = 0) {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
-import { frameCircuitCameraInPlace, startingGridLocations } from './circuitGeometry'
+import { frameCircuitCameraInPlace, interpolateStartPose, START_TRANSITION_SECONDS, startingGridLocations } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
 import { createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
@@ -135,8 +135,12 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       }
       marker.visible = false
       for (const [number, car] of cars) {
-        const gridLocation = options.showStartingGrid ? gridLocations.get(number) : undefined
-        const location = options.showStartingGrid ? null : carLocation(replay.locations[String(number)] ?? [], timeRef.current)
+        const startingPose = gridLocations.get(number)
+        const gridLocation = options.showStartingGrid ? startingPose : undefined
+        const samples = replay.locations[String(number)] ?? []
+        const firstSample = samples[0]
+        const isStarting = Boolean(!options.showStartingGrid && startingPose && firstSample && firstSample[0] <= START_TRANSITION_SECONDS && timeRef.current < START_TRANSITION_SECONDS)
+        const location = options.showStartingGrid ? null : carLocation(samples, timeRef.current, isStarting)
         const stop = options.showStartingGrid ? null : stoppedAt(stops.get(number) ?? [], timeRef.current)
         const ghost = ghosts.get(number)
         const label = labels.get(number)
@@ -151,8 +155,13 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
           car.position.copy(gridLocation.position)
           car.rotation.y = gridLocation.rotation
         } else if (location) {
-          car.position.copy(project(location.x, location.y, 0.08))
-          car.rotation.y = Math.atan2(-Math.cos(location.heading), -Math.sin(location.heading))
+          const telemetryPose = {
+            position: project(location.x, location.y, 0.08),
+            rotation: Math.atan2(-Math.cos(location.heading), -Math.sin(location.heading)),
+          }
+          const pose = isStarting && startingPose ? interpolateStartPose(startingPose, telemetryPose, timeRef.current) : telemetryPose
+          car.position.copy(pose.position)
+          car.rotation.y = pose.rotation
         }
         if ((options.hoveredDriver ?? options.selectedDriver) === number) {
           marker.visible = true

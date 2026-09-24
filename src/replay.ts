@@ -66,19 +66,20 @@ export function latestAt<T extends [number, ...unknown[]]>(events: T[], time: nu
   return low ? events[low - 1] : null
 }
 
-export function carLocation(samples: LocationSample[], time: number): { x: number; y: number; heading: number } | null {
-  if (!samples.length || time < samples[0][0] || time > samples[samples.length - 1][0] + 3) return null
+export function carLocation(samples: LocationSample[], time: number, holdFirstSample = false): { x: number; y: number; heading: number } | null {
+  if (!samples.length || (time < samples[0][0] && !holdFirstSample) || time > samples[samples.length - 1][0] + 3) return null
+  const sampleTime = Math.max(time, samples[0][0])
   let low = 0
   let high = samples.length
   while (low < high) {
     const middle = Math.floor((low + high) / 2)
-    if (samples[middle][0] <= time) low = middle + 1
+    if (samples[middle][0] <= sampleTime) low = middle + 1
     else high = middle
   }
   const before = samples[Math.max(0, low - 1)]
   const after = samples[Math.min(samples.length - 1, low)]
   if (after[0] - before[0] > 5) return null
-  const fraction = before === after ? 0 : Math.max(0, Math.min(1, (time - before[0]) / (after[0] - before[0])))
+  const fraction = before === after ? 0 : Math.max(0, Math.min(1, (sampleTime - before[0]) / (after[0] - before[0])))
   return {
     x: before[1] + (after[1] - before[1]) * fraction,
     y: before[2] + (after[2] - before[2]) * fraction,

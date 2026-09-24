@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createProjection, createRibbonGeometry, startingGridLocations } from './circuitGeometry'
+import { createProjection, createRibbonGeometry, interpolateStartPose, startingGridLocations } from './circuitGeometry'
 import { Vector3 } from 'three'
 
 describe('circuit projection', () => {
@@ -34,6 +34,16 @@ it('places paired grid cars on opposite sides behind the start line', () => {
   expect(locations.get(1)?.position.toArray()).toEqual([2, 0.08, 0.72])
   expect(locations.get(2)?.position.toArray()).toEqual([2, 0.08, -0.72])
   expect(locations.get(3)?.position.toArray()).toEqual([5.5, 0.08, 0.72])
+})
+
+it('connects the starting grid to the first telemetry position without a jump', () => {
+  const grid = { position: new Vector3(0, 0.08, 0), rotation: Math.PI - 0.1 }
+  const telemetry = { position: new Vector3(12, 0.08, 0), rotation: -Math.PI + 0.1 }
+  expect(interpolateStartPose(grid, telemetry, 0).position.toArray()).toEqual(grid.position.toArray())
+  const middle = interpolateStartPose(grid, telemetry, 1.5)
+  expect(middle.position.x).toBeCloseTo(6)
+  expect(middle.rotation).toBeCloseTo(Math.PI)
+  expect(interpolateStartPose(grid, telemetry, 3).position.toArray()).toEqual(telemetry.position.toArray())
 })
 
 it('keeps the whole grandstand footprint clear of the circuit', async () => {
