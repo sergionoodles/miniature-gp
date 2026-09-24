@@ -1,8 +1,4 @@
 import * as THREE from 'three'
-import { createAlbertParkScenery } from './albertPark'
-import { createBahrainScenery } from './bahrain'
-import { createJeddahScenery } from './jeddah'
-import { createShanghaiScenery } from './shanghai'
 import { createRaceLighting } from './raceLighting'
 import type { Replay } from './replay'
 import { canPlaceStructure, createProjection, createRibbonGeometry } from './circuitGeometry'
@@ -208,23 +204,14 @@ export function buildCircuit(replay: Replay, circuit: string) {
   const size = bounds.getSize(new THREE.Vector3())
   const width = size.x + 38
   const depth = size.z + 38
-  const isAlbertPark = circuit === 'Albert Park Circuit'
-  const isBahrain = circuit === 'Bahrain International Circuit'
-  const isJeddah = circuit === 'Jeddah Corniche Circuit'
-  const isShanghai = circuit === 'Shanghai International Circuit'
-  const hasCustomScenery = isAlbertPark || isBahrain || isJeddah || isShanghai
   const isCoastal = circuit.includes('Zandvoort')
   const scene = new THREE.Scene()
   const updateLighting = createRaceLighting(scene, replay)
   updateLighting(0, false)
-  addTerrain(scene, track, isCoastal, width + 360, depth + 360, hasCustomScenery, isBahrain || isJeddah)
-  if (!hasCustomScenery) addOutskirts(scene, track, isCoastal, width + 360, depth + 360)
-  addTrack(scene, track, isBahrain || isJeddah)
-  if (isAlbertPark) scene.add(createAlbertParkScenery(track))
-  else if (isBahrain) scene.add(createBahrainScenery(track))
-  else if (isJeddah) scene.add(createJeddahScenery(track))
-  else if (isShanghai) scene.add(createShanghaiScenery(track))
-  else addScenery(scene, track, isCoastal, width, depth)
+  addTerrain(scene, track, isCoastal, width + 360, depth + 360)
+  addOutskirts(scene, track, isCoastal, width + 360, depth + 360)
+  addTrack(scene, track)
+  addScenery(scene, track, isCoastal, width, depth)
   const cars = new Map(replay.drivers.map((driver) => {
     const car = createCar(driver)
     car.children.forEach((part, index) => { part.castShadow = index === 0 })

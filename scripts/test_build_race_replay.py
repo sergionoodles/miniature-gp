@@ -1,6 +1,6 @@
 import unittest
 
-from build_monza_replay import milliseconds, sample_locations, with_race_events, with_session_metadata
+from build_race_replay import milliseconds, sample_locations, with_race_events, with_session_metadata
 
 
 class SessionMetadataTest(unittest.TestCase):

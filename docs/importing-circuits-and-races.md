@@ -1,84 +1,39 @@
-# Importing a circuit and race replay
+# Importing races and circuits
 
-Use this guide when adding a circuit or a race to Miniature GP. Keep the circuit reference material, race metadata, replay file, renderer, and race picker in sync.
+Circuit geometry comes from each race replay's GPS telemetry. `scripts/import_races.py` discovers completed Grand Prix races from OpenF1, creates replay files, and updates the catalog used by the race picker. There is no separate circuit model or reference image to import.
 
-## Before changing files
+## Import races
 
-For a new circuit, get both images from the user before authoring the circuit:
-
-1. **Track map:** a clear top-down layout of the full circuit. The start/finish line and direction should be visible if available.
-2. **Aerial image:** a top-down view showing the circuit and enough of the venue around it to guide terrain and scenery.
-
-Ask for the missing image if either is absent. Do not replace user-supplied references with generated or web-sourced images. Keep the original files; use the track map to check the route and use the aerial image to guide the surroundings. Save supplied references under `assets/circuits/<circuit-slug>/references/`, preserving their file extensions. These are authoring references: the current renderer does not load them at runtime.
-
-Images do not replace race telemetry. The replay's GPS coordinates supply the circuit path and car movement. The renderer in `src/circuitWorld.ts` projects that path into Three.js and builds terrain and scenery procedurally.
-
-## Add a circuit
-
-1. Choose a stable lowercase slug, such as `silverstone`, and the display name used in the race picker, such as `Silverstone` or `Circuit Zandvoort`.
-2. Add the user's two reference images under `assets/circuits/<slug>/references/`.
-3. Obtain a replay with GPS coordinates for that circuit. Prefer a clean lap from the race session being imported. If the circuit must be added before race data is available, trace a centerline from the supplied track map into the replay's `track` coordinate format; do not invent geometry without checking it against the map.
-4. Check that the replay's `track` is a continuous loop, faces the correct direction, and places the start/finish point correctly. `src/circuitGeometry.ts` centers and scales it; `src/circuitWorld.ts` uses it for the track, terrain, and procedural scenery.
-5. Add the circuit's race entry in `src/App.tsx` and pass its display name to `TrackScene`. The renderer currently has a Zandvoort-specific coastal terrain style in `src/circuitWorld.ts`; update that condition if the new circuit needs a different environment treatment. Keep circuit-specific scene details tied to the circuit rather than hard-coded coordinates that could appear at another venue.
-6. Open the app and inspect the circuit from the default and top views. Check the image references against the route and scenery, then adjust the projection or scene details if the circuit is distorted, clipped, or misplaced.
-
-## Import a race
-
-Use the requested **year**, **country**, and **session type** to identify the event. For a Grand Prix replay, use the `Race` session, not practice, qualifying, or sprint. Confirm the event and final classification against an authoritative race result.
-
-### Find the OpenF1 session
-
-OpenF1 provides historical session, timing, location, position, starting-grid, overtake, pit, weather, race-control, and stint data through its REST API. See the [OpenF1 API documentation](https://openf1.org/docs/).
-
-Look up the session with the requested year and country, for example:
-
-```text
-https://api.openf1.org/v1/sessions?year=2026&country_name=Netherlands&session_name=Race
-```
-
-Check that the response identifies the expected event and contains exactly one matching race session. Record its `session_key`, circuit name, date, and `gmt_offset`. Do not guess a session key from the event order.
-
-### Generate the replay file
-
-The current importer is `scripts/build_monza_replay.py`. Its `RACES` mapping associates a slug with `(session_key, track_driver, track_lap_number)`. Add the new race there, using a driver and lap with a complete, representative GPS trace for the circuit. The output path is currently hard-coded to a 2026 filename; update the importer to use the requested year when adding a race from another season.
-
-Run the importer with the registered slug:
+From the repository root, run:
 
 ```bash
-python scripts/build_monza_replay.py --race <slug>
+python scripts/import_races.py
 ```
 
-The importer downloads the session data and writes a compact replay JSON file under `public/data/`. It samples each driver's GPS locations once per second, preserves race-relative timestamps, and omits `(0, 0)` fixes because OpenF1 uses them for missing locations. It also adds the session GMT offset used by race lighting. `--metadata-only` refreshes session metadata, the starting grid, and overtakes on an already generated replay without downloading telemetry again.
-
-For each race session, the importer requests `starting_grid?session_key=<key>` and `overtakes?session_key=<key>`. The replay stores `startingGrid` as `[driver_number, position]` pairs, sorted by grid position, and `overtakes` as `[race_relative_seconds, overtaking_driver_number, overtaken_driver_number, resulting_position]` events. `startingGridSource` is `starting_grid` when the grid endpoint returns records. If it returns no records or a 404, the importer uses the position feed's initial order and records `startingGridSource: "position"`. Check that source before describing a grid as official. The renderer places grid cars in staggered slots behind the replay track's start/finish marker during the opening countdown; GPS locations take over when playback starts.
-
-OpenF1 [defines overtakes](https://openf1.org/docs/#overtakes) as position exchanges, including changes from pit stops and penalties, and says the feed may be incomplete. The replay keeps those records within its race interval. Treat the on-screen notice as a recorded position gain, not proof of an on-track pass.
-
-### Register the race in the app
-
-Add the replay file and race metadata to the `RACES` object in `src/App.tsx`. Include the JSON URL, display label, circuit name, Grand Prix name, date, and total laps. Make sure any country or circuit labels used by the stage header are derived from the race entry or updated for the new slug. Keep the picker value, replay URL, and displayed event details in agreement.
-
-The replay shape is defined by the `Replay` type in `src/replay.ts`. If the format changes, update the type and its runtime guard, `isReplay`, along with the importer and any consumers.
-
-## Check the result
-
-Before finishing, verify all of the following:
-
-- The chosen OpenF1 session matches the requested year, country, and race.
-- The final replay order agrees with the official classification, including retirements and penalties where the source data reflects them.
-- `track` follows the supplied track map and forms a closed circuit; driver locations use the same coordinate space.
-- Race-relative events are within the replay duration. The driver, position, starting-grid, overtake, lap, pit, weather, race-control, and stint data are present when provided by the source. Verify grid positions are unique, check `startingGridSource`, and spot-check overtake times and driver numbers.
-- No missing GPS fixes place retired cars at `(0, 0)`.
-- The new race loads from the picker, shows cars in grid order before and during the countdown, displays the correct date and lap count, and plays through the start, any stoppage/restart, and finish.
-- The circuit looks consistent with both user-supplied references in the default and top camera views.
-
-Run the project checks after implementation:
+The script defaults to the current UTC year. To import another season, pass a year:
 
 ```bash
-pnpm typecheck
-pnpm lint
-pnpm test
-python -m unittest discover -s scripts -p 'test_*.py'
+python scripts/import_races.py --year 2025
 ```
 
-Report the user-provided image paths, race session details and data sources, generated replay path, checks performed, and any telemetry or image limitations.
+It uses OpenF1's `sessions` and `meetings` endpoints to find Race sessions and their event metadata. It skips cancelled and future sessions, and waits to import a race until OpenF1 reports both a finished session and race results. Races with existing replay files are reused. Running the importer again is safe: it refreshes the season catalog without downloading replay data already present.
+
+For each new race, `scripts/import_races.py` calls `build_replay` from `scripts/build_race_replay.py`. The replay builder fetches the session's GPS, driver, position, lap, pit, weather, race-control, stint, starting-grid, and overtake data. It selects a complete GPS lap for the circuit, then saves the replay as `public/data/<year>/race-<session_key>-<year>.json`. The importer writes the corresponding race entries to `public/data/<year>/races-<year>.json` and lists seasons with races in `public/data/years.json`.
+
+OpenF1 may restrict API access around live sessions. The fetch helper waits and retries when it receives the specific live-session restriction response. The importer requires Python 3.12 or newer and uses only the standard library.
+
+## How the circuit is rendered
+
+The replay's `track` array contains GPS points from a representative lap. `src/circuitWorld.ts` projects those points into the scene, smooths them into a loop, and builds the road, kerbs, terrain, and procedural scenery at runtime. The scenery is generic; it does not reproduce the real placement of circuit-specific buildings, grandstands, or landmarks. Zandvoort currently receives a coastal terrain treatment.
+
+The race picker reads `public/data/years.json` and loads the selected season's catalog. Importing a season with completed races makes it available in the season dropdown.
+
+## Check an import
+
+- Confirm the session is the intended year and Grand Prix, and check its final order against official results.
+- Confirm the replay's `track` forms a complete loop and that driver locations use the same coordinates.
+- Check that the replay contains usable driver positions and GPS locations, and that race events fall within the replay duration.
+- Confirm the generated entry in `races-<year>.json` points to the correct replay and has the expected event name, date, circuit, and lap count.
+- Run the app with a catalog it supports and check the race picker, track shape, starting grid, and playback.
+
+The replay format and runtime validation are defined in `src/replay.ts`. If that format changes, update the importer, `Replay` type, `isReplay` guard, and its consumers together.

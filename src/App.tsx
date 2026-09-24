@@ -1,20 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
-import { CIRCUIT_PREVIEWS } from './circuitPreview'
 import { TrackScene } from './TrackScene'
 import { carLocation, clockLabel, isReplay, lapsAt, latestAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, positionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
 
 type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
-const CIRCUIT_PREVIEW_OPTIONS: RaceOption[] = [
-  { id: 'albert-park-preview', url: '', label: 'Albert Park · Circuit preview', circuit: 'Albert Park Circuit', grandPrix: 'Circuit preview', location: 'Melbourne', countryCode: 'AUS', date: '', laps: 0 },
-  { id: 'bahrain-preview', url: '', label: 'Bahrain · Circuit preview', circuit: 'Bahrain International Circuit', grandPrix: 'Circuit preview', location: 'Sakhir', countryCode: 'BHR', date: '', laps: 0 },
-  { id: 'jeddah-preview', url: '', label: 'Jeddah · Circuit preview', circuit: 'Jeddah Corniche Circuit', grandPrix: 'Circuit preview', location: 'Jeddah', countryCode: 'SAU', date: '', laps: 0 },
-  { id: 'shanghai-preview', url: '', label: 'Shanghai · Circuit preview', circuit: 'Shanghai International Circuit', grandPrix: 'Circuit preview', location: 'Shanghai', countryCode: 'CHN', date: '', laps: 0 },
-]
 const FALLBACK_RACES: RaceOption[] = [
-  ...CIRCUIT_PREVIEW_OPTIONS,
-  { id: '11361', url: '/data/monza-2026.json', label: 'Italian Grand Prix · Monza', circuit: 'Autodromo Nazionale Monza', grandPrix: 'Italian Grand Prix', location: 'Monza', countryCode: 'ITA', date: '2026-09-06', laps: 53 },
-  { id: '11353', url: '/data/netherlands-2026.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Circuit Zandvoort', grandPrix: 'Dutch Grand Prix', location: 'Zandvoort', countryCode: 'NLD', date: '2026-08-23', laps: 72 },
+  { id: '11361', url: '/data/2026/monza-2026.json', label: 'Italian Grand Prix · Monza', circuit: 'Autodromo Nazionale Monza', grandPrix: 'Italian Grand Prix', location: 'Monza', countryCode: 'ITA', date: '2026-09-06', laps: 53 },
+  { id: '11353', url: '/data/2026/netherlands-2026.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Circuit Zandvoort', grandPrix: 'Dutch Grand Prix', location: 'Zandvoort', countryCode: 'NLD', date: '2026-08-23', laps: 72 },
 ]
 const isRaceOption = (value: unknown): value is RaceOption => {
   if (typeof value !== 'object' || value === null) return false
@@ -31,13 +23,13 @@ const DEFAULT_SPEED = 10
 const NOTIFICATION_DURATION = 6000
 
 export default function App() {
+  const [years, setYears] = useState([2026])
+  const [year, setYear] = useState(2026)
   const [races, setRaces] = useState(FALLBACK_RACES)
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
   const [raceId, setRaceId] = useState('11361')
   const race = races.find((option) => option.id === raceId) ?? races[0]
-  const preview = CIRCUIT_PREVIEWS[race.id]
-  const isPreview = preview !== undefined
   const [replay, setReplay] = useState<Replay | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [time, setTime] = useState(0)
@@ -69,7 +61,27 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/data/races-2026.json', { signal: controller.signal })
+    fetch('/data/years.json', { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Season index could not be loaded (${response.status}).`)
+        return response.json() as Promise<unknown>
+      })
+      .then((value) => {
+        if (!Array.isArray(value) || !value.length || !value.every((item) => Number.isInteger(item))) throw new Error('Season index is invalid.')
+        const availableYears = [...value].sort((first: number, second: number) => second - first)
+        setYears(availableYears)
+        setYear(availableYears[0])
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === 'AbortError') return
+        console.error('Using bundled season:', cause)
+      })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch(`/data/${year}/races-${year}.json`, { signal: controller.signal })
       .then((response) => {
         if (response.status === 404) return null
         if (!response.ok) throw new Error(`Race catalog could not be loaded (${response.status}).`)
@@ -79,7 +91,7 @@ export default function App() {
         if (value === null) return
         if (!Array.isArray(value) || !value.length || !value.every(isRaceOption)) throw new Error('Race catalog is invalid.')
         const options = [...value].sort((first, second) => second.date.localeCompare(first.date))
-        setRaces([...options, ...CIRCUIT_PREVIEW_OPTIONS])
+        setRaces(options)
         selectRace(options[0].id)
       })
       .catch((cause: unknown) => {
@@ -87,14 +99,10 @@ export default function App() {
         console.error('Using bundled race list:', cause)
       })
     return () => controller.abort()
-  }, [])
+  }, [year])
 
   useEffect(() => {
     const controller = new AbortController()
-    if (preview) {
-      setReplay(preview.replay)
-      return () => controller.abort()
-    }
     fetch(race.url, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Replay file could not be loaded (${response.status}).`)
@@ -109,7 +117,7 @@ export default function App() {
         setError(cause instanceof Error ? cause.message : 'The replay file could not be loaded.')
       })
     return () => controller.abort()
-  }, [race.url, preview])
+  }, [race.url])
 
   useEffect(() => {
     if (!replay) return
@@ -230,7 +238,7 @@ export default function App() {
           </div>
         </div>
         <div className="race-picker" role="group" aria-label="Selected race">
-          <label>Season<select aria-label="Season" defaultValue="2026"><option value="2026">2026</option></select></label>
+          <label>Season<select aria-label="Season" value={year} onChange={(event) => setYear(Number(event.target.value))}>{years.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
           <label>Grand Prix<select aria-label="Grand Prix" value={race.id} onChange={(event) => selectRace(event.target.value)}>
             {races.map((option) => <option key={option.id} value={option.id}>{option.label}{option.date ? ` · ${formatRaceDate(option.date)}` : ''}</option>)}
           </select></label>
@@ -241,12 +249,12 @@ export default function App() {
         <aside className="order-panel">
           <div className="panel-heading">
             <div>
-              <span className="section-title">{isPreview ? 'Circuit guide' : 'Running order'}</span>
-              <span className="section-note">{race.circuit.replace('Circuit ', '')}{!isPreview && ` · ${formatRaceDate(race.date)}`}</span>
+              <span className="section-title">Running order</span>
+              <span className="section-note">{race.circuit.replace('Circuit ', '')} · {formatRaceDate(race.date)}</span>
             </div>
-            <span className="lap-counter">{isPreview ? '3D model' : `Lap ${leaderLap}/${race.laps}`}</span>
+            <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
           </div>
-          {!isPreview && <div className="order-hint">Hover to isolate · Select to locate <span>↗</span></div>}
+          <div className="order-hint">Hover to isolate · Select to locate <span>↗</span></div>
           <div className="order-list" role="region" tabIndex={0} aria-label="Running order">
             {order.map((driver) => (
               <button type="button" className={`driver-row${selectedDriver === driver.number ? ' selected' : ''}`} key={driver.number} aria-pressed={selectedDriver === driver.number} aria-label={`Highlight ${driver.name}, ${driver.position === 99 ? 'position unavailable' : `position ${driver.position}`}, ${driver.team}, number ${driver.number}${stoppedAt(stops.get(driver.number) ?? [], time) ? ', stopped car inferred from telemetry' : ''}`}  onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHoveredDriver(driver.number) }} onPointerLeave={() => setHoveredDriver(null)} onFocus={() => setHoveredDriver(driver.number)} onBlur={() => setHoveredDriver(null)} onClick={() => setSelectedDriver(selectedDriver === driver.number ? null : driver.number)}>
@@ -257,29 +265,28 @@ export default function App() {
                 <span className="driver-number">{stoppedAt(stops.get(driver.number) ?? [], time) ? <span className="stopped-icon" role="img" aria-label="Stopped car inferred from telemetry" title="Stopped car inferred from telemetry">♧</span> : driver.number}</span>
               </button>
             ))}
-            {preview && <div className="panel-message">{preview.description} Explore the circuit with Orbit and Top view. The route is traced from the supplied track map; scenery is an approximation from the aerial reference. No race telemetry is loaded.</div>}
             {!replay && <div className="panel-message">{error ?? 'Loading race data…'}</div>}
           </div>
-          <div className="data-credit">{isPreview ? 'User-supplied circuit references' : <>Recorded telemetry · <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a></>}</div>
+          <div className="data-credit">Recorded telemetry · <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a></div>
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
           {replay ? <TrackScene key={race.id} replay={replay} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
-          {!isPreview && <div className="stage-topline">
+          <div className="stage-topline">
             <div className="stage-title">
-              <span className="stage-kicker">{race.countryCode} / {isPreview ? 'CIRCUIT' : race.date.slice(0, 4)}</span>
+              <span className="stage-kicker">{race.countryCode} / {race.date.slice(0, 4)}</span>
               <h1>{race.location}</h1>
-              <span>{race.grandPrix}{!isPreview && <> <b>·</b> {formatRaceDate(race.date)}</>}</span>
+              <span>{race.grandPrix} <b>·</b> {formatRaceDate(race.date)}</span>
             </div>
-          </div>}
-          {!isPreview && <div className="stage-conditions">
+          </div>
+          <div className="stage-conditions">
             <div className="status-chip"><span className="status-dot" />{status}</div>
             <div className="weather-chip">
               <span className="weather-symbol" aria-hidden="true">{isRaining ? '☂' : '☀'}</span>
               <span>{isRaining ? 'Rain' : 'Dry'}</span>
               {weather && <span className="weather-details">Air {weather[2].toFixed(1)}° · Track {weather[3].toFixed(1)}°</span>}
             </div>
-          </div>}
+          </div>
           {status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}
           <div className="notification-stack" aria-label="Race notifications" aria-live="polite">
             {notifications.map((notice) => <div className="race-toast" key={notice.id}>
@@ -289,7 +296,7 @@ export default function App() {
               {notice.detail && <span>{notice.detail}</span>}
             </div>)}
           </div>
-          {replay && !isPreview && (!hasStarted || countdown !== null) && <div className="race-start-hud">
+          {replay && (!hasStarted || countdown !== null) && <div className="race-start-hud">
             {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start race</button> : <div className="race-start-countdown" role="status" aria-live="polite"><span>RACE START</span><strong>{countdown}</strong><div className={`start-lights step-${4 - countdown}`} aria-hidden="true"><i /><i /><i /></div></div>}
           </div>}
           {selected && <div className="selection-card">
@@ -298,11 +305,11 @@ export default function App() {
             <p>{selected.team} · P{selected.position === 99 ? '–' : selected.position} · Lap {selected.lap}</p>
             <small>{isSelectedStopped ? 'Stopped car · inferred from telemetry' : hasSelectedLocation ? 'Highlighted on the circuit' : 'Location unavailable at this replay time'}</small>
           </div>}
-          <div className="stage-bottomline"><span>Drag to orbit <b>·</b> Scroll to zoom</span><span>{isPreview ? 'Reference-based circuit model' : 'Ghost = inferred stop · Recorded locations'}</span></div>
+          <div className="stage-bottomline"><span>Drag to orbit <b>·</b> Scroll to zoom</span><span>Ghost = inferred stop · Recorded locations</span></div>
         </section>
       </main>
 
-      {!isPreview && <footer className="transport">
+      <footer className="transport">
         <div className="replay-label"><span className="section-eyebrow">SESSION REPLAY</span><strong>{countdown !== null ? 'Starting' : isPlaying ? 'Playing' : 'Paused'} <span className={isPlaying ? 'playback-dot active' : 'playback-dot'} /></strong></div>
         <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(countdown === null && !isPlaying)} aria-label={countdown !== null ? 'Cancel race start' : isPlaying ? 'Pause replay' : 'Play replay'}>
           {isPlaying || countdown !== null ? <span className="pause-icon" /> : <span className="play-icon" />}
@@ -312,7 +319,7 @@ export default function App() {
           <input className="timeline" type="range" aria-label="Replay position" min="0" max={replay?.duration ?? 1} step="0.1" value={time} disabled={!replay} onChange={(event) => seek(Number(event.target.value))} style={{ '--progress': `${replay ? time / replay.duration * 100 : 0}%` } as React.CSSProperties} />
         </div>
         <label className="speed-picker">Speed<select aria-label="Replay speed" value={speed} onChange={(event) => changeSpeed(Number(event.target.value))}>{SPEEDS.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
-      </footer>}
+      </footer>
     </div>
   )
 }

@@ -39,7 +39,10 @@ def fetch(endpoint, **filters):
             if attempt == 7 or isinstance(error, HTTPError) and error.code not in RETRYABLE_STATUS:
                 raise
             retry_after = error.headers.get("Retry-After") if isinstance(error, HTTPError) else None
-            time.sleep(max(min(int(retry_after), 120), 2 ** attempt) if retry_after and retry_after.isdigit() else 2 ** attempt)
+            delay = max(min(int(retry_after), 120), 2 ** attempt) if retry_after and retry_after.isdigit() else 2 ** attempt
+            print(f"OpenF1 returned {error.code if isinstance(error, HTTPError) else 'a network error'} for {endpoint}; retrying in {delay}s",
+                  file=sys.stderr, flush=True)
+            time.sleep(delay)
             attempt += 1
 
 
@@ -127,19 +130,31 @@ def select_track(laps, session_key, preferred=None):
                   and not row.get("is_pit_out_lap") and 50 <= row["lap_duration"] <= 180]
     candidates.sort(key=lambda row: (0 if preferred == (row["driver_number"], row["lap_number"]) else 1,
                                      abs(row["lap_number"] - 10), row["lap_duration"]))
+    candidates_by_driver = {}
     for lap in candidates:
-        track_start = datetime.fromisoformat(lap["date_start"])
-        track_end = track_start + timedelta(seconds=lap["lap_duration"])
-        rows = fetch("location", session_key=session_key, driver_number=lap["driver_number"],
-                     **{"date>": track_start.isoformat(), "date<": track_end.isoformat()})
-        points = [[row["x"], row["y"]] for row in rows if row.get("x") is not None and row.get("y") is not None
-                  and (row["x"], row["y"]) != (0, 0)]
-        if len(points) < 100:
+        candidates_by_driver.setdefault(lap["driver_number"], []).append(lap)
+    print(f"Searching {len(candidates)} laps across {len(candidates_by_driver)} drivers for GPS track data", flush=True)
+    for index, (driver_number, driver_laps) in enumerate(candidates_by_driver.items(), start=1):
+        print(f"Checking driver {index}/{len(candidates_by_driver)} ({driver_number}; {len(driver_laps)} laps)", flush=True)
+        try:
+            rows = fetch("location", session_key=session_key, driver_number=driver_number)
+        except HTTPError as error:
+            if error.code != 404:
+                raise
             continue
-        width = max(point[0] for point in points) - min(point[0] for point in points)
-        height = max(point[1] for point in points) - min(point[1] for point in points)
-        if math.dist(points[0], points[-1]) <= math.hypot(width, height) * 0.2:
-            return points[::2]
+        dated_rows = [(datetime.fromisoformat(row["date"]), row) for row in rows]
+        dated_rows.sort(key=lambda item: item[0])
+        for lap in driver_laps:
+            track_start = datetime.fromisoformat(lap["date_start"])
+            track_end = track_start + timedelta(seconds=lap["lap_duration"])
+            points = [[row["x"], row["y"]] for date, row in dated_rows if track_start < date < track_end
+                      and row.get("x") is not None and row.get("y") is not None and (row["x"], row["y"]) != (0, 0)]
+            if len(points) < 100:
+                continue
+            width = max(point[0] for point in points) - min(point[0] for point in points)
+            height = max(point[1] for point in points) - min(point[1] for point in points)
+            if math.dist(points[0], points[-1]) <= math.hypot(width, height) * 0.2:
+                return points[::2]
     raise ValueError(f"No complete GPS lap found for session {session_key}")
 
 
