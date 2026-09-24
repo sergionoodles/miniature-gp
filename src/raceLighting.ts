@@ -41,7 +41,7 @@ export function createRaceLighting(scene: THREE.Scene) {
   const daySky = new THREE.Color(0xd9e5e6)
   const overcastSky = new THREE.Color(0xa9b3b7)
   const stormSky = new THREE.Color(0x5f6b71)
-  const nightSky = new THREE.Color(0x09151f)
+  const nightSky = new THREE.Color(0x101e2b)
   const dayFill = new THREE.Color(0xe8f4ff)
   const overcastFill = new THREE.Color(0xd6dde2)
   const nightFill = new THREE.Color(0x8caecb)
@@ -86,11 +86,11 @@ export function createRaceLighting(scene: THREE.Scene) {
 
     fill.color.copy(nightFill).lerp(dayColor.copy(dayFill).lerp(overcastFill, cloudCover), daylight)
     fill.groundColor.copy(nightGround).lerp(dayColor.copy(dayGround).lerp(wetGround, wetness), daylight)
-    fill.intensity = THREE.MathUtils.lerp(0.65, 2.2 * (1 + cloudCover * OVERCAST_FILL_GAIN), daylight)
+    fill.intensity = THREE.MathUtils.lerp(0.85, 2.2 * (1 + cloudCover * OVERCAST_FILL_GAIN), daylight)
 
     dayColor.copy(daySun).lerp(coldSun, cold * COLD_TINT_STRENGTH).lerp(hotSun, heat * HEAT_HAZE_STRENGTH).lerp(overcastSun, cloudCover)
     sun.color.copy(nightSun).lerp(dayColor, daylight)
-    sun.intensity = THREE.MathUtils.lerp(0.85, 3.2 * (1 - cloudCover * OVERCAST_SUN_LOSS), daylight)
+    sun.intensity = THREE.MathUtils.lerp(1.05, 3.2 * (1 - cloudCover * OVERCAST_SUN_LOSS), daylight)
     if (isIsolated) {
       const luminance = background.r * 0.2126 + background.g * 0.7152 + background.b * 0.0722
       background.setRGB(luminance, luminance, luminance)

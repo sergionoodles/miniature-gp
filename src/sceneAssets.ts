@@ -26,7 +26,7 @@ function hull(outline: [number, number][], depth: number, height: number) {
 
 export function createCar(driver: Driver) {
   const group = new THREE.Group()
-  const paint = new THREE.MeshStandardMaterial({ color: driver.color, roughness: 0.3, metalness: 0.3 })
+  const paint = new THREE.MeshStandardMaterial({ color: driver.color, emissive: driver.color, emissiveIntensity: 0, roughness: 0.3, metalness: 0.3 })
   const carbon = new THREE.MeshStandardMaterial({ color: 0x172126, roughness: 0.66 })
   const rubber = new THREE.MeshStandardMaterial({ color: 0x111415, roughness: 0.93 })
   const body = hull([[-0.19, 1.55], [0.19, 1.55], [0.3, 0.35], [0.56, 0], [0.48, -0.8], [0.22, -1.22], [-0.22, -1.22], [-0.48, -0.8], [-0.56, 0], [-0.3, 0.35]], 0.3, 0.22)
@@ -52,7 +52,7 @@ export function createCar(driver: Driver) {
   helmet.position.set(0, 0.65, 0.07)
   group.add(helmet)
   group.visible = false
-  return group
+  return { group, paint }
 }
 
 export function createGrandstand(length: number) {

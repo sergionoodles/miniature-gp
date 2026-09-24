@@ -23,6 +23,7 @@ const TRACK_SAMPLES = 900
 const TERRAIN_MARGIN = 360
 const TERRAIN_SEGMENTS = 160
 const NIGHT_GLOW = 1.4
+const NIGHT_CAR_PAINT_GLOW = 0.18
 // Storm clouds dim the day enough for venues to switch their lights on.
 const STORM_GLOW_SHARE = 0.45
 const DRY_ASPHALT = new THREE.Color(0x8a9a9f)
@@ -201,6 +202,7 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
   const asphalt = addTrack(scene, track, elevations, environment.ground.verge)
   addBridges(scene, track, elevations, crossings)
   const nightMaterials = addScenery(scene, plan, environment)
+  const carPaints: THREE.MeshStandardMaterial[] = []
   const rain = createRain(plan.field.width, plan.field.depth)
   scene.add(rain.streaks)
   const updateAtmosphere = (elapsed: number, isIsolated: boolean, deltaSeconds: number) => {
@@ -212,13 +214,15 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
     asphalt.roughness = THREE.MathUtils.lerp(DRY_ASPHALT_ROUGHNESS, WET_ASPHALT_ROUGHNESS, weather.wetness)
     const glow = Math.max(1 - daylight, weather.rain * weather.cloudCover * STORM_GLOW_SHARE)
     nightMaterials.forEach((material) => { material.emissiveIntensity = glow * NIGHT_GLOW })
+    carPaints.forEach((paint) => { paint.emissiveIntensity = (1 - daylight) * NIGHT_CAR_PAINT_GLOW })
   }
-  updateAtmosphere(0, false, 0)
   const cars = new Map(replay.drivers.map((driver) => {
-    const car = createCar(driver)
+    const { group: car, paint } = createCar(driver)
+    carPaints.push(paint)
     car.children.forEach((part, index) => { part.castShadow = index === 0 })
     scene.add(car)
     return [driver.number, car] as const
   }))
+  updateAtmosphere(0, false, 0)
   return { scene, cars, project, width, depth, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
 }
