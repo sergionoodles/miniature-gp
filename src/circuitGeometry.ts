@@ -5,6 +5,10 @@ const CIRCUIT_SPAN = 180
 const GRID_START_OFFSET = 2
 const GRID_ROW_SPACING = 3.5
 const GRID_LANE_OFFSET = 0.72
+// Samples this close along the lap belong to the same pass of the track.
+const SAME_PASS_SAMPLES = 20
+// Passes further apart in height than this (a bridge over its underpass) don't crowd each other.
+const SAME_LEVEL_HEIGHT = 0.5
 export const START_TRANSITION_SECONDS = 3
 
 export function createProjection(points: [number, number][]) {
@@ -52,7 +56,8 @@ export function interpolateStartPose(grid: { position: THREE.Vector3; rotation: 
   }
 }
 
-export function createRibbonGeometry(points: THREE.Vector3[], width: number, height: number, offset = 0, isClosed = true) {
+// sideLimits caps, per point, how far the ribbon may reach on its [left, right] side.
+export function createRibbonGeometry(points: THREE.Vector3[], width: number, height: number, offset = 0, isClosed = true, sideLimits?: [number, number][]) {
   const positions: number[] = []
   const uvs: number[] = []
   const indices: number[] = []
@@ -67,7 +72,8 @@ export function createRibbonGeometry(points: THREE.Vector3[], width: number, hei
     const center = points[current]
     if (index) distance += center.distanceTo(points[index - 1])
     for (const side of [-1, 1]) {
-      const point = center.clone().addScaledVector(across, offset + side * width / 2)
+      const reach = Math.max(0, Math.min(width / 2, sideLimits?.[current][side === -1 ? 0 : 1] ?? Infinity))
+      const point = center.clone().addScaledVector(across, offset + side * reach)
       positions.push(point.x, center.y + height, point.z)
       uvs.push(side === -1 ? 0 : 1, distance / 4)
     }
@@ -82,6 +88,24 @@ export function createRibbonGeometry(points: THREE.Vector3[], width: number, hei
   geometry.setIndex(indices)
   geometry.computeVertexNormals()
   return geometry
+}
+
+// Half the distance from each sample to the nearest other pass on its [left, right] side, where
+// two sections of the same level run side by side. Each side of the gap belongs to one section.
+export function roadSideRoom(track: THREE.Vector3[], elevations: number[]) {
+  return track.map((center, index): [number, number] => {
+    const direction = track[(index + 1) % track.length].clone().sub(track[(index - 1 + track.length) % track.length]).setY(0).normalize()
+    const room: [number, number] = [Infinity, Infinity]
+    track.forEach((other, otherIndex) => {
+      const gap = Math.abs(otherIndex - index)
+      if (Math.min(gap, track.length - gap) <= SAME_PASS_SAMPLES || Math.abs(elevations[otherIndex] - elevations[index]) > SAME_LEVEL_HEIGHT) return
+      const offsetX = other.x - center.x
+      const offsetZ = other.z - center.z
+      const side = offsetX * -direction.z + offsetZ * direction.x < 0 ? 0 : 1
+      room[side] = Math.min(room[side], Math.hypot(offsetX, offsetZ) / 2)
+    })
+    return room
+  })
 }
 
 export function canPlaceStructure(track: THREE.Vector3[], center: THREE.Vector3, outward: THREE.Vector3, length: number) {

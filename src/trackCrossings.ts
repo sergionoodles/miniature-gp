@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import { GROUND_LEVEL } from './terrainField'
 
 export const BRIDGE_HEIGHT = 1.8
+// The deck is only as wide as the asphalt and its edge lines: at Suzuka the back straight runs
+// within a verge's width of the Degner section, so a wider deck would cover that section's asphalt.
+const DECK_HALF_WIDTH = 1.71
 // Along-track distance from the crossing that stays at full height, so the deck clears the whole lower road.
 const BRIDGE_PLATEAU = 8
 const BRIDGE_RAMP = 34
@@ -26,7 +29,8 @@ function segmentsCross(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: 
 }
 
 // The pass driven later in the lap goes over: at Suzuka, the only figure-eight on the calendar,
-// the back straight after Spoon bridges the Degner-to-hairpin section.
+// the back straight after Spoon bridges the Degner-to-hairpin section. A figure-eight crosses
+// once; more crossings mean a corrupt outline that bridges would only make worse.
 export function findTrackCrossings(track: THREE.Vector3[]): TrackCrossing[] {
   const crossings: TrackCrossing[] = []
   for (let first = 0; first < track.length; first++) {
@@ -35,7 +39,7 @@ export function findTrackCrossings(track: THREE.Vector3[]): TrackCrossing[] {
       if (segmentsCross(track[first], track[first + 1], track[second], track[(second + 1) % track.length])) crossings.push({ over: second, under: first })
     }
   }
-  return crossings
+  return crossings.length === 1 ? crossings : []
 }
 
 function lapDistances(track: THREE.Vector3[]) {
@@ -88,7 +92,7 @@ function raisedRange(elevations: number[], center: number) {
 
 // Side walls of each raised pass: embankment walls with a parapet on the ramps, and only the deck
 // edge over the lower road so it stays visible underneath.
-export function createBridgeWallGeometry(track: THREE.Vector3[], elevations: number[], crossings: TrackCrossing[], halfWidth: number) {
+export function createBridgeWallGeometry(track: THREE.Vector3[], elevations: number[], crossings: TrackCrossing[]) {
   const positions: number[] = []
   const indices: number[] = []
   for (const { over, under } of crossings) {
@@ -96,8 +100,8 @@ export function createBridgeWallGeometry(track: THREE.Vector3[], elevations: num
     for (const side of [-1, 1]) {
       range.forEach((index, step) => {
         const tangent = tangentAt(track, index)
-        const edge = track[index].clone().addScaledVector(new THREE.Vector3(-tangent.z, 0, tangent.x), side * halfWidth)
-        const isOverRoad = distanceToUnderpass(track, under, edge) < halfWidth + UNDERPASS_MARGIN
+        const edge = track[index].clone().addScaledVector(new THREE.Vector3(-tangent.z, 0, tangent.x), side * DECK_HALF_WIDTH)
+        const isOverRoad = distanceToUnderpass(track, under, edge) < DECK_HALF_WIDTH + UNDERPASS_MARGIN
         const top = elevations[index] + PARAPET_HEIGHT
         const bottom = isOverRoad ? elevations[index] - DECK_THICKNESS : GROUND_LEVEL
         const vertex = positions.length / 3

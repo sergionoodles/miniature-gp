@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createProjection, createRibbonGeometry, interpolateStartPose, startingGridLocations } from './circuitGeometry'
+import { createProjection, createRibbonGeometry, interpolateStartPose, roadSideRoom, startingGridLocations } from './circuitGeometry'
 import { Vector3 } from 'three'
 
 describe('circuit projection', () => {
@@ -14,6 +14,29 @@ describe('circuit projection', () => {
   })
   it('rejects an empty circuit', () => {
     expect(() => createProjection([])).toThrow('Circuit requires points')
+  })
+})
+
+describe('road side room', () => {
+  // A long hairpin loop whose two straights run 3 apart, closer than a road width.
+  const straight = Array.from({ length: 100 }, (_, index) => new Vector3(index, 0, 0))
+  const loop = [...straight, ...straight.map((point) => point.clone().setZ(3)).reverse()]
+  const flat = loop.map(() => 0)
+
+  it('splits the gap to a neighbouring pass on the side facing it', () => {
+    const [left, right] = roadSideRoom(loop, flat)[50]
+    expect(Math.min(left, right)).toBeCloseTo(1.5)
+    expect(Math.max(left, right)).toBeGreaterThan(10)
+  })
+  it('ignores a pass running at another level', () => {
+    const bridged = loop.map((_, index) => index >= 100 ? 1.8 : 0)
+    expect(Math.min(...roadSideRoom(loop, bridged)[50])).toBeGreaterThan(10)
+  })
+  it('keeps two ribbons within their room from overlapping', () => {
+    const room = roadSideRoom(loop, flat)
+    const positions = createRibbonGeometry(loop, 3.2, 0, 0, true, room).getAttribute('position')
+    // Vertices of the first straight (z = 0) must stay below the midline at z = 1.5.
+    for (let vertex = 20; vertex < 180; vertex++) expect(positions.getZ(vertex)).toBeLessThanOrEqual(1.5 + 1e-6)
   })
 })
 
