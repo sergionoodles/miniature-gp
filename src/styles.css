@@ -10,11 +10,11 @@ button:focus-visible, select:focus-visible, input:focus-visible, canvas:focus-vi
 button:disabled, input:disabled { opacity: .4; cursor: default; }
 button { transition: background .15s, color .15s; }
 .app-shell { height: 100dvh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden; }
-.topbar { height: 78px; flex: 0 0 78px; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; border-bottom: 1px solid var(--hud-border); background: #0c141ce8; backdrop-filter: blur(18px); z-index: 2; }
+.topbar { min-height: 78px; flex: 0 0 78px; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; border-bottom: 1px solid var(--hud-border); background: #0c141ce8; backdrop-filter: blur(18px); z-index: 2; }
 .identity { display: flex; align-items: center; gap: 15px; }
 .identity-mark { width: 42px; height: 42px; object-fit: cover; border-radius: 8px; }
 .app-name { font-weight: 650; font-size: 18px; letter-spacing: 1.4px; text-transform: uppercase; }
-.app-subtitle { font-size: 11px; color: var(--hud-muted); margin-top: 5px; letter-spacing: .3px; }
+.app-subtitle { font-size: 13px; color: var(--hud-muted); margin-top: 0; letter-spacing: .3px; }
 .race-picker { display: flex; gap: 22px; }
 .race-picker label, .speed-picker { display: grid; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--hud-muted); }
 select { border: 1px solid var(--hud-border); border-radius: 5px; background: var(--hud-background); min-height: 36px; padding: 6px 28px 6px 10px; color: #fff; font-size: 12px; font-weight: 600; letter-spacing: 0; }

@@ -271,6 +271,7 @@ export default function App() {
           <img className="identity-mark" src="/logo.svg" alt="" />
           <div>
             <div className="app-name">Miniature GP</div>
+            <div className="app-subtitle">Every race. Rebuilt in miniature.</div>
           </div>
         </div>
         <div className="race-picker" role="group" aria-label="Selected race">
