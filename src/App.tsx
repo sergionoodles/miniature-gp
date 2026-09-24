@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
 import { TrackScene } from './TrackScene'
-import { carLocation, clockLabel, isReplay, lapsAt, latestAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, positionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
+import { createWeatherTimeline, describeWeather } from './raceWeather'
+import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, positionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
 
 type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
 const FALLBACK_RACES: RaceOption[] = [
@@ -250,10 +251,12 @@ export default function App() {
   }, [replay, time, isPlaying])
 
   const stops = useMemo(() => replay ? detectStoppedCars(replay) : new Map<number, StoppedInterval[]>(), [replay])
-  const weather = replay ? latestAt(replay.weather, time) : null
+  const weatherAt = useMemo(() => replay ? createWeatherTimeline(replay) : null, [replay])
+  const weather = weatherAt?.(time) ?? null
+  const conditions = weather ? describeWeather(weather) : null
   const status = replay ? raceStatus(replay.raceControl, time) : 'Loading'
   const leaderLap = order[0]?.lap ?? 1
-  const isRaining = Boolean(weather?.[1])
+  const isRaining = conditions?.label === 'Rain'
   const selected = order.find((driver) => driver.number === selectedDriver)
   const isSelectedStopped = selected ? stoppedAt(stops.get(selected.number) ?? [], time) !== null : false
   const hasSelectedLocation = selected && replay ? time === 0 && !isPlaying
@@ -303,7 +306,7 @@ export default function App() {
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay ? <TrackScene key={race.id} replay={replay} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
+          {replay && weatherAt ? <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
           <div className="stage-topline">
             <div className="stage-title">
               <span className="stage-kicker">{race.countryCode} / {race.date.slice(0, 4)}</span>
@@ -314,9 +317,9 @@ export default function App() {
           <div className="stage-conditions">
             <div className="status-chip"><span className="status-dot" />{status}</div>
             <div className="weather-chip">
-              <span className="weather-symbol" aria-hidden="true">{isRaining ? '☂' : '☀'}</span>
-              <span>{isRaining ? 'Rain' : 'Dry'}</span>
-              {weather && <span className="weather-details">Air {weather[2].toFixed(1)}° · Track {weather[3].toFixed(1)}°</span>}
+              <span className="weather-symbol" aria-hidden="true">{conditions?.symbol ?? '☀'}</span>
+              <span>{conditions?.label ?? 'Dry'}</span>
+              {weather && <span className="weather-details">Air {weather.airTemperature.toFixed(1)}° · Track {weather.trackTemperature.toFixed(1)}°</span>}
             </div>
           </div>
           {status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { Scene, Color, Light } from 'three'
+import { Scene, Color, DirectionalLight, Fog, Light } from 'three'
 import { createRaceLighting, getRaceDaylight } from './raceLighting'
+import type { WeatherState } from './raceWeather'
 
 describe('race lighting from local time', () => {
   it('renders the bundled afternoon races in daylight', () => {
@@ -32,23 +33,62 @@ describe('race lighting from local time', () => {
   })
 })
 
+const CLEAR: WeatherState = { rain: 0, wetness: 0, cloudCover: 0, airTemperature: 22, trackTemperature: 38 }
+const totalLight = (scene: Scene) => scene.children.reduce((sum, child) => sum + (child instanceof Light ? child.intensity : 0), 0)
+const sunIntensity = (scene: Scene) => scene.children.find((child) => child instanceof DirectionalLight)?.intensity ?? 0
+
 it('updates the rendered environment on seeking and restores the current sky after hover isolation', () => {
   const scene = new Scene()
-  const updateLighting = createRaceLighting(scene, { start: '2026-01-01T17:00:00Z', gmt_offset: '00:00:00' })
-  updateLighting(0, false)
+  const updateLighting = createRaceLighting(scene)
+  updateLighting(1, CLEAR, false)
   const daylightSky = (scene.background as Color).clone()
-  const daylightIntensity = scene.children.reduce((sum, child) => sum + (child instanceof Light ? child.intensity : 0), 0)
-  updateLighting(7200, false)
+  const daylightIntensity = totalLight(scene)
+  updateLighting(0, CLEAR, false)
   const nightSky = (scene.background as Color).clone()
   expect(nightSky.getHex()).not.toBe(daylightSky.getHex())
-  expect(scene.children.reduce((sum, child) => sum + (child instanceof Light ? child.intensity : 0), 0)).toBeLessThan(daylightIntensity)
-  updateLighting(0, true)
+  expect(totalLight(scene)).toBeLessThan(daylightIntensity)
+  updateLighting(1, CLEAR, true)
   const isolatedSky = scene.background as Color
   expect(isolatedSky.r).toBeCloseTo(isolatedSky.g)
   expect(isolatedSky.g).toBeCloseTo(isolatedSky.b)
-  updateLighting(7200, true)
-  updateLighting(7200, false)
+  updateLighting(0, CLEAR, true)
+  updateLighting(0, CLEAR, false)
   expect((scene.background as Color).equals(nightSky)).toBe(true)
-  updateLighting(0, false)
+  updateLighting(1, CLEAR, false)
   expect((scene.background as Color).equals(daylightSky)).toBe(true)
+})
+
+describe('race lighting from weather', () => {
+  it('dims the sun and greys the sky under cloud and rain', () => {
+    const scene = new Scene()
+    const updateLighting = createRaceLighting(scene)
+    updateLighting(1, CLEAR, false)
+    const clearSun = sunIntensity(scene)
+    const clearSky = (scene.background as Color).clone()
+    updateLighting(1, { ...CLEAR, cloudCover: 1, rain: 1, wetness: 1 }, false)
+    const stormSky = scene.background as Color
+    expect(sunIntensity(scene)).toBeLessThan(clearSun * 0.5)
+    expect(stormSky.getHSL({ h: 0, s: 0, l: 0 }).l).toBeLessThan(clearSky.getHSL({ h: 0, s: 0, l: 0 }).l)
+  })
+
+  it('pulls the fog in as rain gets heavier', () => {
+    const scene = new Scene()
+    const updateLighting = createRaceLighting(scene)
+    updateLighting(1, CLEAR, false)
+    const clearFar = (scene.fog as Fog).far
+    updateLighting(1, { ...CLEAR, rain: 0.5, cloudCover: 1 }, false)
+    const drizzleFar = (scene.fog as Fog).far
+    updateLighting(1, { ...CLEAR, rain: 1, cloudCover: 1 }, false)
+    expect(drizzleFar).toBeLessThan(clearFar)
+    expect((scene.fog as Fog).far).toBeLessThan(drizzleFar)
+  })
+
+  it('keeps floodlit night races unaffected by inferred cloud', () => {
+    const scene = new Scene()
+    const updateLighting = createRaceLighting(scene)
+    updateLighting(0, CLEAR, false)
+    const clearNight = totalLight(scene)
+    updateLighting(0, { ...CLEAR, cloudCover: 0.8 }, false)
+    expect(totalLight(scene)).toBeCloseTo(clearNight)
+  })
 })

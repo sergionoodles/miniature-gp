@@ -8,7 +8,7 @@ export type WeatherEvent = [time: number, rainfall: number, air: number, track: 
 export type RaceEvent = [time: number, category: string, flag: string | null, message: string]
 export type ReplayNotification = { id: string; time: number; title: string; detail: string; drivers?: [{ name: string; color: string }, { name: string; color: string }] }
 export const OVERTAKE_NOTIFICATION_CUTOFF = 50
-export type Stint = [driver: number, firstLap: number, lastLap: number, compound: string]
+export type Stint = [driver: number, firstLap: number | null, lastLap: number | null, compound: string | null]
 
 export type Driver = {
   number: number

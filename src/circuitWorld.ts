@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import { resolveCircuitEnvironment, type CircuitEnvironment } from './circuitEnvironments'
 import { createLandmark } from './circuitLandmarks'
 import { createRaceLighting, getRaceDaylight } from './raceLighting'
+import type { WeatherTimeline } from './raceWeather'
+import { createRain } from './rainEffect'
 import type { Replay } from './replay'
 import { createProjection, createRibbonGeometry } from './circuitGeometry'
 import { box, createCar, createGrandstand, createLabel, createMergedMesh, createPaddock } from './sceneAssets'
@@ -14,6 +16,12 @@ const TRACK_SAMPLES = 900
 const TERRAIN_MARGIN = 360
 const TERRAIN_SEGMENTS = 160
 const NIGHT_GLOW = 1.4
+// Storm clouds dim the day enough for venues to switch their lights on.
+const STORM_GLOW_SHARE = 0.45
+const DRY_ASPHALT = new THREE.Color(0x8a9a9f)
+const WET_ASPHALT = new THREE.Color(0x4f5a5e)
+const DRY_ASPHALT_ROUGHNESS = 0.96
+const WET_ASPHALT_ROUGHNESS = 0.3
 // Mountain share ranges where grass turns to rock and rock to snow.
 const ROCK_LINE: [number, number] = [0.2, 0.42]
 const SNOW_LINE: [number, number] = [0.62, 0.74]
@@ -75,10 +83,11 @@ function addTrack(scene: THREE.Scene, track: THREE.Vector3[], vergeColor: number
   const asphaltTexture = createSurfaceTexture('#616765', '#828581')
   const surfaces: [number, number, number, number][] = [
     [7.5, -0.02, 0xc4b99b, 0], [4.5, 0.01, vergeColor, 0],
-    [TRACK_WIDTH + 0.22, 0.04, 0xb4d5d8, 0], [TRACK_WIDTH, 0.055, 0x8a9a9f, 0],
+    [TRACK_WIDTH + 0.22, 0.04, 0xb4d5d8, 0], [TRACK_WIDTH, 0.055, DRY_ASPHALT.getHex(), 0],
   ]
+  const asphalt = new THREE.MeshStandardMaterial({ color: DRY_ASPHALT, roughness: DRY_ASPHALT_ROUGHNESS, map: asphaltTexture })
   for (const [width, height, color, offset] of surfaces) {
-    const material = new THREE.MeshStandardMaterial({ color, roughness: 0.96, map: width === TRACK_WIDTH ? asphaltTexture : null })
+    const material = width === TRACK_WIDTH ? asphalt : new THREE.MeshStandardMaterial({ color, roughness: 0.96 })
     const mesh = new THREE.Mesh(createRibbonGeometry(track, width, height, offset), material)
     mesh.receiveShadow = true
     scene.add(mesh)
@@ -117,6 +126,7 @@ function addTrack(scene: THREE.Scene, track: THREE.Vector3[], vergeColor: number
   label.position.copy(track[0]).add(new THREE.Vector3(0, 6, 0))
   label.scale.multiplyScalar(1.3)
   scene.add(label)
+  return asphalt
 }
 
 function addStands(scene: THREE.Scene, stands: StandFootprint[]) {
@@ -149,7 +159,7 @@ function addScenery(scene: THREE.Scene, plan: ReturnType<typeof planScenery>, en
   return windowLights ? [...landmarkLights, windowLights] : landmarkLights
 }
 
-export function buildCircuit(replay: Replay, circuit: string) {
+export function buildCircuit(replay: Replay, circuit: string, weatherAt: WeatherTimeline) {
   const project = createProjection(replay.track)
   const rawTrack = replay.track.map(([x, y]) => project(x, y))
   const track = new THREE.CatmullRomCurve3(rawTrack, true, 'centripetal').getSpacedPoints(TRACK_SAMPLES).slice(0, -1)
@@ -160,22 +170,29 @@ export function buildCircuit(replay: Replay, circuit: string) {
   const environment = resolveCircuitEnvironment(circuit)
   const plan = planScenery(track, environment, width, depth, width + TERRAIN_MARGIN, depth + TERRAIN_MARGIN)
   const scene = new THREE.Scene()
-  const updateRaceLighting = createRaceLighting(scene, replay)
+  const updateRaceLighting = createRaceLighting(scene)
   addTerrain(scene, plan.field, environment)
   addWater(scene, plan.field, environment)
-  addTrack(scene, track, environment.ground.verge)
+  const asphalt = addTrack(scene, track, environment.ground.verge)
   const nightMaterials = addScenery(scene, plan, environment)
-  const updateLighting = (elapsed: number, isIsolated: boolean) => {
-    updateRaceLighting(elapsed, isIsolated)
-    const night = 1 - getRaceDaylight(replay.start, replay.gmt_offset, elapsed)
-    nightMaterials.forEach((material) => { material.emissiveIntensity = night * NIGHT_GLOW })
+  const rain = createRain(plan.field.width, plan.field.depth)
+  scene.add(rain.streaks)
+  const updateAtmosphere = (elapsed: number, isIsolated: boolean, deltaSeconds: number) => {
+    const daylight = getRaceDaylight(replay.start, replay.gmt_offset, elapsed)
+    const weather = weatherAt(elapsed)
+    updateRaceLighting(daylight, weather, isIsolated)
+    rain.update(weather.rain, deltaSeconds)
+    asphalt.color.copy(DRY_ASPHALT).lerp(WET_ASPHALT, weather.wetness)
+    asphalt.roughness = THREE.MathUtils.lerp(DRY_ASPHALT_ROUGHNESS, WET_ASPHALT_ROUGHNESS, weather.wetness)
+    const glow = Math.max(1 - daylight, weather.rain * weather.cloudCover * STORM_GLOW_SHARE)
+    nightMaterials.forEach((material) => { material.emissiveIntensity = glow * NIGHT_GLOW })
   }
-  updateLighting(0, false)
+  updateAtmosphere(0, false, 0)
   const cars = new Map(replay.drivers.map((driver) => {
     const car = createCar(driver)
     car.children.forEach((part, index) => { part.castShadow = index === 0 })
     scene.add(car)
     return [driver.number, car] as const
   }))
-  return { scene, cars, project, width, depth, track, updateLighting }
+  return { scene, cars, project, width, depth, track, updateAtmosphere }
 }

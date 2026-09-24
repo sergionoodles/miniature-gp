@@ -4,12 +4,14 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
 import { frameCircuitCameraInPlace, interpolateStartPose, START_TRANSITION_SECONDS, startingGridLocations } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
+import type { WeatherTimeline } from './raceWeather'
 import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
 type Props = {
   replay: Replay
+  weatherAt: WeatherTimeline
   timeRef: RefObject<number>
   circuit: string
   hoveredDriver: number | null
@@ -19,7 +21,7 @@ type Props = {
   onSelectDriver: (driver: number | null) => void
 }
 
-export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
@@ -38,7 +40,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       setError('The 3D view needs WebGL. Try a browser with hardware acceleration enabled. Race timing and playback are still available.')
       return
     }
-    const { scene, cars, project, width, depth, track, updateLighting } = buildCircuit(replay, circuit)
+    const { scene, cars, project, width, depth, track, updateAtmosphere } = buildCircuit(replay, circuit, weatherAt)
     const gridLocations = startingGridLocations(track, replay.startingGrid)
     const ghosts = new Map(replay.drivers.map((driver) => {
       const ghost = createGhost(driver)
@@ -126,10 +128,12 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
     let frame = 0
     let lastDiagnostic = 0
     let previousHover: number | null = null
+    let previousFrame = performance.now()
     const animate = (now: number) => {
       const options = optionsRef.current
       const activeHover = activeHoverDriver(options.hoveredDriver, options.showStartingGrid)
-      updateLighting(timeRef.current, activeHover !== null)
+      updateAtmosphere(timeRef.current, activeHover !== null, (now - previousFrame) / 1000)
+      previousFrame = now
       if (previousHover !== activeHover) {
         isolateDriver(activeHover)
         previousHover = activeHover
@@ -208,7 +212,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       renderer.dispose()
       actionRef.current = () => {}
     }
-  }, [replay, timeRef, circuit, stops, onSelectDriver])
+  }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver])
 
   const changeView = (next: 'overview' | 'top') => {
     setView(next)
