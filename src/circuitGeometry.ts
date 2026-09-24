@@ -52,15 +52,16 @@ export function interpolateStartPose(grid: { position: THREE.Vector3; rotation: 
   }
 }
 
-export function createRibbonGeometry(points: THREE.Vector3[], width: number, height: number, offset = 0) {
+export function createRibbonGeometry(points: THREE.Vector3[], width: number, height: number, offset = 0, isClosed = true) {
   const positions: number[] = []
   const uvs: number[] = []
   const indices: number[] = []
+  const segments = isClosed ? points.length : points.length - 1
   let distance = 0
-  for (let index = 0; index <= points.length; index++) {
+  for (let index = 0; index <= segments; index++) {
     const current = index % points.length
-    const previous = points[(current - 1 + points.length) % points.length]
-    const next = points[(current + 1) % points.length]
+    const previous = points[isClosed ? (current - 1 + points.length) % points.length : Math.max(0, current - 1)]
+    const next = points[isClosed ? (current + 1) % points.length : Math.min(points.length - 1, current + 1)]
     const direction = next.clone().sub(previous).normalize()
     const across = new THREE.Vector3(-direction.z, 0, direction.x)
     const center = points[current]
@@ -70,7 +71,7 @@ export function createRibbonGeometry(points: THREE.Vector3[], width: number, hei
       positions.push(point.x, height, point.z)
       uvs.push(side === -1 ? 0 : 1, distance / 4)
     }
-    if (index < points.length) {
+    if (index < segments) {
       const vertex = index * 2
       indices.push(vertex, vertex + 1, vertex + 2, vertex + 1, vertex + 3, vertex + 2)
     }

@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { createAlbertParkScenery } from './albertPark'
+import { createBahrainScenery } from './bahrain'
 import { createRaceLighting } from './raceLighting'
 import type { Replay } from './replay'
 import { canPlaceStructure, createProjection, createRibbonGeometry } from './circuitGeometry'
@@ -32,19 +33,19 @@ function terrainHeight(x: number, z: number, distance: number, width: number, de
   return -0.12 + THREE.MathUtils.smoothstep(distance, 6, 18) * edge * wave * (isCoastal ? 5 : 2)
 }
 
-function addTerrain(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boolean, width: number, depth: number, isPark = false) {
+function addTerrain(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boolean, width: number, depth: number, isFlat = false, isDesert = false) {
   const geometry = new THREE.PlaneGeometry(width, depth, 140, 140).rotateX(-Math.PI / 2)
   const positions = geometry.getAttribute('position')
   const colors: number[] = []
-  const sand = new THREE.Color(isCoastal ? 0xcfc3a0 : 0x7e9671)
-  const grass = new THREE.Color(isCoastal ? 0x87966b : 0x54795d)
+  const sand = new THREE.Color(isDesert ? 0xe0c898 : isCoastal ? 0xcfc3a0 : 0x7e9671)
+  const grass = new THREE.Color(isDesert ? 0xc8a878 : isCoastal ? 0x87966b : 0x54795d)
   const sparseTrack = track.filter((_, index) => index % 6 === 0)
   for (let index = 0; index < positions.count; index++) {
     const x = positions.getX(index)
     const z = positions.getZ(index)
     const distance = Math.min(...sparseTrack.map((point) => Math.hypot(point.x - x, point.z - z)))
     const wave = (Math.sin(x * 0.08 + Math.cos(z * 0.06)) + Math.cos(z * 0.11 - x * 0.025) + 2) / 4
-    positions.setY(index, isPark ? -0.12 : terrainHeight(x, z, distance, width, depth, isCoastal))
+    positions.setY(index, isFlat ? -0.12 : terrainHeight(x, z, distance, width, depth, isCoastal))
     const color = sand.clone().lerp(grass, THREE.MathUtils.smoothstep(wave, 0.28, 0.86))
     colors.push(color.r, color.g, color.b)
   }
@@ -55,17 +56,18 @@ function addTerrain(scene: THREE.Scene, track: THREE.Vector3[], isCoastal: boole
   const ground = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, map: texture, roughness: 1 }))
   ground.receiveShadow = true
   scene.add(ground)
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0x87977c, roughness: 1 }))
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: isDesert ? 0xcdb487 : 0x87977c, roughness: 1 }))
   floor.rotation.x = -Math.PI / 2
   floor.position.y = -0.3
   floor.receiveShadow = true
   scene.add(floor)
 }
 
-function addTrack(scene: THREE.Scene, track: THREE.Vector3[]) {
+function addTrack(scene: THREE.Scene, track: THREE.Vector3[], isDesert = false) {
   const asphaltTexture = createSurfaceTexture('#616765', '#828581')
+  // Desert circuits use paved run-off rather than grass verges.
   const surfaces: [number, number, number, number][] = [
-    [7.5, -0.02, 0xc4b99b, 0], [4.5, 0.01, 0x9caa84, 0],
+    [7.5, -0.02, 0xc4b99b, 0], [4.5, 0.01, isDesert ? 0x8f918b : 0x9caa84, 0],
     [TRACK_WIDTH + 0.22, 0.04, 0xb4d5d8, 0], [TRACK_WIDTH, 0.055, 0x8a9a9f, 0],
   ]
   for (const [width, height, color, offset] of surfaces) {
@@ -205,14 +207,17 @@ export function buildCircuit(replay: Replay, circuit: string) {
   const width = size.x + 38
   const depth = size.z + 38
   const isAlbertPark = circuit === 'Albert Park Circuit'
+  const isBahrain = circuit === 'Bahrain International Circuit'
+  const hasCustomScenery = isAlbertPark || isBahrain
   const isCoastal = circuit.includes('Zandvoort')
   const scene = new THREE.Scene()
   const updateLighting = createRaceLighting(scene, replay)
   updateLighting(0, false)
-  addTerrain(scene, track, isCoastal, width + 360, depth + 360, isAlbertPark)
-  if (!isAlbertPark) addOutskirts(scene, track, isCoastal, width + 360, depth + 360)
-  addTrack(scene, track)
+  addTerrain(scene, track, isCoastal, width + 360, depth + 360, hasCustomScenery, isBahrain)
+  if (!hasCustomScenery) addOutskirts(scene, track, isCoastal, width + 360, depth + 360)
+  addTrack(scene, track, isBahrain)
   if (isAlbertPark) scene.add(createAlbertParkScenery(track))
+  else if (isBahrain) scene.add(createBahrainScenery(track))
   else addScenery(scene, track, isCoastal, width, depth)
   const cars = new Map(replay.drivers.map((driver) => {
     const car = createCar(driver)

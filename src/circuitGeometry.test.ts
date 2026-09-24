@@ -28,6 +28,15 @@ it('builds a continuous road with upward-facing normals', () => {
   geometry.dispose()
 })
 
+it('leaves an open road unjoined between its ends', () => {
+  const geometry = createRibbonGeometry([new Vector3(0, 0, 0), new Vector3(10, 0, 0), new Vector3(10, 0, 10)], 2, 0.1, 0, false)
+  const positions = geometry.getAttribute('position')
+  expect(positions.count).toBe(6)
+  expect(geometry.index?.count).toBe(12)
+  expect([positions.getX(0), positions.getZ(0), positions.getX(1), positions.getZ(1)]).toEqual([0, -1, 0, 1])
+  geometry.dispose()
+})
+
 it('places paired grid cars on opposite sides behind the start line', () => {
   const track = [new Vector3(0, 0, 0), new Vector3(0, 0, 20), new Vector3(10, 0, 20), new Vector3(10, 0, 0)]
   const locations = startingGridLocations(track, [[1, 1], [2, 2], [3, 3]])

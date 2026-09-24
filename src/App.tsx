@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
-import { ALBERT_PARK_PREVIEW } from './circuitPreview'
+import { CIRCUIT_PREVIEWS } from './circuitPreview'
 import { TrackScene } from './TrackScene'
 import { carLocation, clockLabel, isReplay, lapsAt, latestAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, positionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
 
 type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
-const CIRCUIT_PREVIEW: RaceOption = { id: 'albert-park-preview', url: '', label: 'Albert Park · Circuit preview', circuit: 'Albert Park Circuit', grandPrix: 'Circuit preview', location: 'Melbourne', countryCode: 'AUS', date: '', laps: 0 }
+const CIRCUIT_PREVIEW_OPTIONS: RaceOption[] = [
+  { id: 'albert-park-preview', url: '', label: 'Albert Park · Circuit preview', circuit: 'Albert Park Circuit', grandPrix: 'Circuit preview', location: 'Melbourne', countryCode: 'AUS', date: '', laps: 0 },
+  { id: 'bahrain-preview', url: '', label: 'Bahrain · Circuit preview', circuit: 'Bahrain International Circuit', grandPrix: 'Circuit preview', location: 'Sakhir', countryCode: 'BHR', date: '', laps: 0 },
+]
 const FALLBACK_RACES: RaceOption[] = [
-  CIRCUIT_PREVIEW,
+  ...CIRCUIT_PREVIEW_OPTIONS,
   { id: '11361', url: '/data/monza-2026.json', label: 'Italian Grand Prix · Monza', circuit: 'Autodromo Nazionale Monza', grandPrix: 'Italian Grand Prix', location: 'Monza', countryCode: 'ITA', date: '2026-09-06', laps: 53 },
   { id: '11353', url: '/data/netherlands-2026.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Circuit Zandvoort', grandPrix: 'Dutch Grand Prix', location: 'Zandvoort', countryCode: 'NLD', date: '2026-08-23', laps: 72 },
 ]
@@ -31,7 +34,8 @@ export default function App() {
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
   const [raceId, setRaceId] = useState('11361')
   const race = races.find((option) => option.id === raceId) ?? races[0]
-  const isPreview = race.id === CIRCUIT_PREVIEW.id
+  const preview = CIRCUIT_PREVIEWS[race.id]
+  const isPreview = preview !== undefined
   const [replay, setReplay] = useState<Replay | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [time, setTime] = useState(0)
@@ -73,7 +77,7 @@ export default function App() {
         if (value === null) return
         if (!Array.isArray(value) || !value.length || !value.every(isRaceOption)) throw new Error('Race catalog is invalid.')
         const options = [...value].sort((first, second) => second.date.localeCompare(first.date))
-        setRaces([...options, CIRCUIT_PREVIEW])
+        setRaces([...options, ...CIRCUIT_PREVIEW_OPTIONS])
         selectRace(options[0].id)
       })
       .catch((cause: unknown) => {
@@ -85,8 +89,8 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController()
-    if (isPreview) {
-      setReplay(ALBERT_PARK_PREVIEW)
+    if (preview) {
+      setReplay(preview.replay)
       return () => controller.abort()
     }
     fetch(race.url, { signal: controller.signal })
@@ -103,7 +107,7 @@ export default function App() {
         setError(cause instanceof Error ? cause.message : 'The replay file could not be loaded.')
       })
     return () => controller.abort()
-  }, [race.url, isPreview])
+  }, [race.url, preview])
 
   useEffect(() => {
     if (!replay) return
@@ -251,7 +255,7 @@ export default function App() {
                 <span className="driver-number">{stoppedAt(stops.get(driver.number) ?? [], time) ? <span className="stopped-icon" role="img" aria-label="Stopped car inferred from telemetry" title="Stopped car inferred from telemetry">♧</span> : driver.number}</span>
               </button>
             ))}
-            {isPreview && <div className="panel-message">Albert Park, Australia. Explore the circuit with Orbit and Top view. The route is traced from the supplied track map; scenery is an approximation from the aerial reference. No race telemetry is loaded.</div>}
+            {preview && <div className="panel-message">{preview.description} Explore the circuit with Orbit and Top view. The route is traced from the supplied track map; scenery is an approximation from the aerial reference. No race telemetry is loaded.</div>}
             {!replay && <div className="panel-message">{error ?? 'Loading race data…'}</div>}
           </div>
           <div className="data-credit">{isPreview ? 'User-supplied circuit references' : <>Recorded telemetry · <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a></>}</div>
