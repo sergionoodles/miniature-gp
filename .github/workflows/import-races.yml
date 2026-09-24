@@ -27,6 +27,8 @@ jobs:
         id: import
         continue-on-error: true
         run: python scripts/import_races.py
+      - name: Update catalogs from existing replays
+        run: python scripts/import_races.py --catalog-only
       - name: Publish replay files and catalog
         run: |
           git add -- public/data

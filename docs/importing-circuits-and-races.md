@@ -28,6 +28,8 @@ The replay's `track` array contains GPS points from a representative lap. `src/c
 
 The race picker reads `public/data/years.json` and loads the selected season's catalog. Importing a season with completed races makes it available in the season dropdown.
 
+For replay files added directly to a year folder, run `python scripts/import_races.py --catalog-only`. It scans every year folder and adds missing replays to their catalogs using the Jolpica season schedule. `pnpm dev`, `pnpm build`, and the import Action run this refresh automatically; restart the dev server after adding files.
+
 ## Check an import
 
 - Confirm the session is the intended year and Grand Prix, and check its final order against official results.

@@ -38,4 +38,6 @@ python scripts/import_races.py --year 2025
 
 The default is the current UTC year. The script discovers completed Grand Prix races from OpenF1, downloads missing replays into `public/data/<year>/`, updates `public/data/<year>/races-<year>.json`, and lists seasons with races in `public/data/years.json`. Rerunning it skips races already imported; future, cancelled, and unfinished races wait for a later run. OpenF1 temporarily restricts free API access around live sessions, starting 30 minutes before and ending 30 minutes after; the script waits and retries every five minutes when that happens. No Python packages need to be installed.
 
+If you add replay JSON files directly to a year folder, run `python scripts/import_races.py --catalog-only` to refresh all season catalogs without downloading races. `pnpm dev` and `pnpm build` run this refresh before starting, and the import Action refreshes catalogs before committing. Restart the dev server after adding files; the refreshed dropdown will include them.
+
 The [Import current season races](.github/workflows/import-races.yml) GitHub Action runs daily at 04:17 UTC. You can also start it from **Actions → Import current season races → Run workflow** to backfill available races immediately. The Action commits generated replay and catalog files to the branch it runs on.

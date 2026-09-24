@@ -6,11 +6,20 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.request import urlopen
 
 from build_race_replay import DATA_DIRECTORY, build_replay, fetch
 
 
 FIRST_AVAILABLE_YEAR = 2023
+COUNTRY_CODES = {
+    "Australia": "AUS", "Austria": "AUT", "Azerbaijan": "AZE", "Bahrain": "BRN",
+    "Belgium": "BEL", "Brazil": "BRA", "Canada": "CAN", "China": "CHN",
+    "Hungary": "HUN", "Italy": "ITA", "Japan": "JPN", "Malaysia": "MAS",
+    "Mexico": "MEX", "Monaco": "MON", "Netherlands": "NED", "Qatar": "QAT",
+    "Saudi Arabia": "KSA", "Singapore": "SGP", "Spain": "ESP", "UAE": "UAE",
+    "UK": "GBR", "USA": "USA",
+}
 
 
 def local_race_date(session):
@@ -61,7 +70,46 @@ def write_years(directory):
     write_catalog(years, directory / "years.json")
 
 
-def run_import(directory=DATA_DIRECTORY, now=None, year=None):
+def fetch_schedule(year):
+    with urlopen(f"https://api.jolpi.ca/ergast/f1/{year}.json?limit=100", timeout=30) as response:
+        return json.load(response)["MRData"]["RaceTable"]["Races"]
+
+
+def refresh_catalogs(directory):
+    for year_directory in sorted(directory.iterdir()) if directory.exists() else []:
+        if not year_directory.is_dir() or not year_directory.name.isdecimal():
+            continue
+        year = int(year_directory.name)
+        replays = existing_replays(directory, year)
+        catalog_path = year_directory / f"races-{year}.json"
+        previous = json.loads(catalog_path.read_text()) if catalog_path.exists() else []
+        previous_by_id = {entry["id"]: entry for entry in previous}
+        missing = set(replays) - {int(identifier) for identifier in previous_by_id}
+        schedule = {row["date"]: row for row in fetch_schedule(year)} if missing else {}
+        entries = []
+        for session_key, (path, replay) in replays.items():
+            prior = previous_by_id.get(str(session_key))
+            if prior:
+                entries.append({**prior, "url": f"/data/{year}/{path.name}",
+                                "countryCode": COUNTRY_CODES.get(prior["countryCode"], prior["countryCode"])})
+                continue
+            race = schedule[replay["start"][:10]]
+            location = race["Circuit"]["Location"]
+            session = {"session_key": session_key, "date_start": replay["start"],
+                       "gmt_offset": replay["gmt_offset"], "circuit_short_name": race["Circuit"]["circuitName"],
+                       "country_code": COUNTRY_CODES.get(location["country"], location["country"])}
+            meeting = {"meeting_name": race["raceName"], "location": location["locality"]}
+            entries.append(race_entry(session, meeting, replay, path.name, year))
+        entries.sort(key=lambda entry: entry["date"], reverse=True)
+        if entries != previous:
+            write_catalog(entries, catalog_path)
+    write_years(directory)
+
+
+def run_import(directory=DATA_DIRECTORY, now=None, year=None, catalog_only=False):
+    if catalog_only:
+        refresh_catalogs(directory)
+        return
     now = now or datetime.now(timezone.utc)
     year = now.year if year is None else year
     if year < FIRST_AVAILABLE_YEAR:
@@ -125,5 +173,6 @@ def run_import(directory=DATA_DIRECTORY, now=None, year=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--year", type=int, help="Season to import (default: current UTC year)")
+    parser.add_argument("--catalog-only", action="store_true", help="Update catalogs from existing replay files in every year folder")
     args = parser.parse_args()
-    run_import(year=args.year)
+    run_import(year=args.year, catalog_only=args.catalog_only)

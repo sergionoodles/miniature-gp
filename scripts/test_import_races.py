@@ -83,6 +83,37 @@ class ImportRacesTest(unittest.TestCase):
         result = subprocess.run([sys.executable, str(Path(__file__).with_name("import_races.py")), "--help"],
                                 capture_output=True, text=True, check=True)
         self.assertIn("--year", result.stdout)
+        self.assertIn("--catalog-only", result.stdout)
+
+    def test_catalog_only_discovers_replays_added_to_existing_year(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "2025").mkdir()
+            (directory / "2025/existing-2025.json").write_text(json.dumps(replay(1)))
+            (directory / "2025/race-2-2025.json").write_text(json.dumps({**replay(2), "start": "2025-09-21T16:00:00+00:00", "gmt_offset": "-04:00:00"}))
+            previous = [{"id": "1", "url": "/data/2025/existing-2025.json", "date": "2025-09-20", "countryCode": "USA"}]
+            (directory / "2025/races-2025.json").write_text(json.dumps(previous))
+            schedule = [{"date": "2025-09-21", "raceName": "Miami Grand Prix", "Circuit": {
+                "circuitName": "Miami International Autodrome", "Location": {"country": "USA", "locality": "Miami"}}}]
+            with patch("import_races.fetch_schedule", return_value=schedule) as schedule_mock, patch("import_races.build_replay") as build_mock:
+                run_import(directory, NOW, catalog_only=True)
+                run_import(directory, NOW, catalog_only=True)
+            schedule_mock.assert_called_once_with(2025)
+            build_mock.assert_not_called()
+            entries = json.loads((directory / "2025/races-2025.json").read_text())
+            self.assertEqual([entry["id"] for entry in entries], ["2", "1"])
+            self.assertEqual(entries[0]["url"], "/data/2025/race-2-2025.json")
+            self.assertEqual(entries[0]["countryCode"], "USA")
+            self.assertEqual(json.loads((directory / "years.json").read_text()), [2025])
+
+    def test_catalog_only_rejects_replay_without_a_matching_race(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "2025").mkdir()
+            (directory / "2025/race-2-2025.json").write_text(json.dumps({**replay(2), "start": "2025-09-21T16:00:00+00:00"}))
+            with patch("import_races.fetch_schedule", return_value=[]), self.assertRaises(KeyError):
+                run_import(directory, NOW, catalog_only=True)
+            self.assertFalse((directory / "2025/races-2025.json").exists())
 
     def test_rejects_years_before_openf1_history(self):
         with tempfile.TemporaryDirectory() as temporary, patch("import_races.fetch", return_value=[]), self.assertRaisesRegex(ValueError, "2023"):
