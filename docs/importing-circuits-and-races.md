@@ -28,7 +28,7 @@ Use the requested **year**, **country**, and **session type** to identify the ev
 
 ### Find the OpenF1 session
 
-OpenF1 provides historical session, timing, location, position, pit, weather, race-control, and stint data through its REST API. See the [OpenF1 API documentation](https://openf1.org/docs/).
+OpenF1 provides historical session, timing, location, position, starting-grid, overtake, pit, weather, race-control, and stint data through its REST API. See the [OpenF1 API documentation](https://openf1.org/docs/).
 
 Look up the session with the requested year and country, for example:
 
@@ -48,7 +48,11 @@ Run the importer with the registered slug:
 python scripts/build_monza_replay.py --race <slug>
 ```
 
-The importer downloads the session data and writes a compact replay JSON file under `public/data/`. It samples each driver's GPS locations once per second, preserves race-relative timestamps, and omits `(0, 0)` fixes because OpenF1 uses them for missing locations. It also adds the session GMT offset used by race lighting. `--metadata-only` refreshes the session metadata on an already generated replay without downloading telemetry again.
+The importer downloads the session data and writes a compact replay JSON file under `public/data/`. It samples each driver's GPS locations once per second, preserves race-relative timestamps, and omits `(0, 0)` fixes because OpenF1 uses them for missing locations. It also adds the session GMT offset used by race lighting. `--metadata-only` refreshes session metadata, the starting grid, and overtakes on an already generated replay without downloading telemetry again.
+
+For each race session, the importer requests `starting_grid?session_key=<key>` and `overtakes?session_key=<key>`. The replay stores `startingGrid` as `[driver_number, position]` pairs, sorted by grid position, and `overtakes` as `[race_relative_seconds, overtaking_driver_number, overtaken_driver_number, resulting_position]` events. `startingGridSource` is `starting_grid` when the grid endpoint returns records. If it returns no records or a 404, the importer uses the position feed's initial order and records `startingGridSource: "position"`. Check that source before describing a grid as official. The renderer places grid cars in staggered slots behind the replay track's start/finish marker during the opening countdown; GPS locations take over when playback starts.
+
+OpenF1 [defines overtakes](https://openf1.org/docs/#overtakes) as position exchanges, including changes from pit stops and penalties, and says the feed may be incomplete. The replay keeps those records within its race interval. Treat the on-screen notice as a recorded position gain, not proof of an on-track pass.
 
 ### Register the race in the app
 
@@ -63,9 +67,9 @@ Before finishing, verify all of the following:
 - The chosen OpenF1 session matches the requested year, country, and race.
 - The final replay order agrees with the official classification, including retirements and penalties where the source data reflects them.
 - `track` follows the supplied track map and forms a closed circuit; driver locations use the same coordinate space.
-- Race-relative events are within the replay duration. The driver, position, lap, pit, weather, race-control, and stint data are present when provided by the source.
+- Race-relative events are within the replay duration. The driver, position, starting-grid, overtake, lap, pit, weather, race-control, and stint data are present when provided by the source. Verify grid positions are unique, check `startingGridSource`, and spot-check overtake times and driver numbers.
 - No missing GPS fixes place retired cars at `(0, 0)`.
-- The new race loads from the picker, displays the correct date and lap count, and plays through the start, any stoppage/restart, and finish.
+- The new race loads from the picker, shows cars in grid order before and during the countdown, displays the correct date and lap count, and plays through the start, any stoppage/restart, and finish.
 - The circuit looks consistent with both user-supplied references in the default and top camera views.
 
 Run the project checks after implementation:

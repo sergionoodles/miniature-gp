@@ -203,7 +203,7 @@ export function buildCircuit(replay: Replay, circuit: string) {
   const size = bounds.getSize(new THREE.Vector3())
   const width = size.x + 38
   const depth = size.z + 38
-  const isCoastal = circuit === 'Circuit Zandvoort'
+  const isCoastal = circuit.includes('Zandvoort')
   const scene = new THREE.Scene()
   const updateLighting = createRaceLighting(scene, replay)
   updateLighting(0, false)

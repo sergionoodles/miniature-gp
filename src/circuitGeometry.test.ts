@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createProjection, createRibbonGeometry } from './circuitGeometry'
+import { createProjection, createRibbonGeometry, startingGridLocations } from './circuitGeometry'
 import { Vector3 } from 'three'
 
 describe('circuit projection', () => {
@@ -26,6 +26,14 @@ it('builds a continuous road with upward-facing normals', () => {
   expect(geometry.index?.count).toBe(24)
   expect(geometry.getAttribute('normal').getY(0)).toBeGreaterThan(0)
   geometry.dispose()
+})
+
+it('places paired grid cars on opposite sides behind the start line', () => {
+  const track = [new Vector3(0, 0, 0), new Vector3(0, 0, 20), new Vector3(10, 0, 20), new Vector3(10, 0, 0)]
+  const locations = startingGridLocations(track, [[1, 1], [2, 2], [3, 3]])
+  expect(locations.get(1)?.position.toArray()).toEqual([2, 0.08, 0.72])
+  expect(locations.get(2)?.position.toArray()).toEqual([2, 0.08, -0.72])
+  expect(locations.get(3)?.position.toArray()).toEqual([5.5, 0.08, 0.72])
 })
 
 it('keeps the whole grandstand footprint clear of the circuit', async () => {

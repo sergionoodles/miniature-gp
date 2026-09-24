@@ -2,7 +2,9 @@
 
 import argparse
 import json
+import math
 import re
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,19 +16,31 @@ from urllib.request import urlopen
 RACES = {"monza": (11361, 12, 10), "netherlands": (11353, 1, 10)}
 API_URL = "https://api.openf1.org/v1/"
 DATA_DIRECTORY = Path(__file__).resolve().parent.parent / "public/data"
+RETRYABLE_STATUS = (429, 502, 503, 504)
+LIVE_SESSION_RETRY_SECONDS = 300
 
 
 def fetch(endpoint, **filters):
     url = f"{API_URL}{endpoint}?{urlencode(filters)}"
-    for attempt in range(4):
+    attempt = 0
+    while True:
         try:
             with urlopen(url, timeout=90) as response:
                 return json.load(response)
         except (HTTPError, URLError) as error:
-            if attempt == 3 or isinstance(error, HTTPError) and error.code not in (429, 502, 503, 504):
+            is_live_session = (isinstance(error, HTTPError) and error.code == 401
+                               and error.fp is not None and b"Live F1 session in progress" in error.read(1024))
+            if is_live_session:
+                error.close()
+                print(f"OpenF1 is restricted around a live session; retrying {endpoint} in 5 minutes", file=sys.stderr, flush=True)
+                time.sleep(LIVE_SESSION_RETRY_SECONDS)
+                attempt = 0
+                continue
+            if attempt == 7 or isinstance(error, HTTPError) and error.code not in RETRYABLE_STATUS:
                 raise
-            time.sleep(2 ** attempt)
-    raise RuntimeError(f"Could not fetch {endpoint}")
+            retry_after = error.headers.get("Retry-After") if isinstance(error, HTTPError) else None
+            time.sleep(max(min(int(retry_after), 120), 2 ** attempt) if retry_after and retry_after.isdigit() else 2 ** attempt)
+            attempt += 1
 
 
 def milliseconds(value):
@@ -57,25 +71,81 @@ def with_session_metadata(replay, session):
     return {**replay, "gmt_offset": gmt_offset}
 
 
+def with_race_events(replay, grid_rows, overtake_rows):
+    driver_numbers = {driver["number"] for driver in replay["drivers"]}
+    initial_positions = {driver: position for time, driver, position in replay["positions"] if time == 0}
+    grid = {row["driver_number"]: row["position"] for row in grid_rows}
+    if not grid:
+        grid = initial_positions
+        if set(grid) != driver_numbers:
+            raise ValueError("Initial positions are missing drivers")
+    if not set(grid) <= driver_numbers or len(set(grid.values())) != len(grid):
+        raise ValueError("Starting grid has unknown drivers or duplicate positions")
+
+    start = milliseconds(replay["start"])
+    end = start + round(replay["duration"] * 1000)
+    overtakes = sorted([
+        [offset(row["date"], start), row["overtaking_driver_number"], row["overtaken_driver_number"], row["position"]]
+        for row in overtake_rows
+        if start <= milliseconds(row["date"]) <= end
+        and row["overtaking_driver_number"] in driver_numbers
+        and row["overtaken_driver_number"] in driver_numbers
+    ])
+    return {**replay, "startingGrid": sorted([[driver, position] for driver, position in grid.items()], key=lambda row: row[1]),
+            "startingGridSource": "starting_grid" if grid_rows else "position", "overtakes": overtakes}
+
+
+def fetch_starting_grid(session_key):
+    try:
+        return fetch("starting_grid", session_key=session_key)
+    except HTTPError as error:
+        if error.code != 404:
+            raise
+        return []
+
+
+def fetch_overtakes(session_key):
+    try:
+        return fetch("overtakes", session_key=session_key)
+    except HTTPError as error:
+        if error.code != 404:
+            raise
+        return []
+
+
 def write_replay(output, replay):
     output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w") as file:
+    temporary = output.with_suffix(".tmp")
+    with temporary.open("w") as file:
         json.dump(replay, file, separators=(",", ":"))
+    temporary.replace(output)
     print(f"Wrote {output} ({output.stat().st_size / 1_000_000:.1f} MB)")
 
 
-def main(race, metadata_only=False):
-    session_key, track_driver, track_lap_number = RACES[race]
-    output = DATA_DIRECTORY / f"{race}-2026.json"
-    sessions = fetch("sessions", session_key=session_key)
-    if len(sessions) != 1:
-        raise ValueError("Expected exactly one race session")
-    session = sessions[0]
-    if metadata_only:
-        replay = json.loads(output.read_text())
-        write_replay(output, with_session_metadata(replay, session))
-        return
-    controls = fetch("race_control", session_key=session_key)
+def select_track(laps, session_key, preferred=None):
+    candidates = [row for row in laps if row.get("date_start") and row.get("lap_duration")
+                  and not row.get("is_pit_out_lap") and 50 <= row["lap_duration"] <= 180]
+    candidates.sort(key=lambda row: (0 if preferred == (row["driver_number"], row["lap_number"]) else 1,
+                                     abs(row["lap_number"] - 10), row["lap_duration"]))
+    for lap in candidates:
+        track_start = datetime.fromisoformat(lap["date_start"])
+        track_end = track_start + timedelta(seconds=lap["lap_duration"])
+        rows = fetch("location", session_key=session_key, driver_number=lap["driver_number"],
+                     **{"date>": track_start.isoformat(), "date<": track_end.isoformat()})
+        points = [[row["x"], row["y"]] for row in rows if row.get("x") is not None and row.get("y") is not None
+                  and (row["x"], row["y"]) != (0, 0)]
+        if len(points) < 100:
+            continue
+        width = max(point[0] for point in points) - min(point[0] for point in points)
+        height = max(point[1] for point in points) - min(point[1] for point in points)
+        if math.dist(points[0], points[-1]) <= math.hypot(width, height) * 0.2:
+            return points[::2]
+    raise ValueError(f"No complete GPS lap found for session {session_key}")
+
+
+def build_replay(session, output, controls=None, preferred_track=None, total_laps=None):
+    session_key = session["session_key"]
+    controls = controls if controls is not None else fetch("race_control", session_key=session_key)
     starts = [row for row in controls if row["category"] == "SessionStatus" and row["message"] == "SESSION STARTED"]
     finishes = [row for row in controls if row["category"] == "SessionStatus" and row["message"] == "SESSION FINISHED"]
     if not starts or not finishes:
@@ -87,11 +157,7 @@ def main(race, metadata_only=False):
 
     drivers = fetch("drivers", session_key=session_key)
     laps = fetch("laps", session_key=session_key)
-    track_lap = next(row for row in laps if row["driver_number"] == track_driver and row["lap_number"] == track_lap_number)
-    track_start = datetime.fromisoformat(track_lap["date_start"])
-    track_end = track_start + timedelta(seconds=track_lap["lap_duration"])
-    track_rows = fetch("location", session_key=session_key, driver_number=track_driver,
-                       **{"date>": track_start.isoformat(), "date<": track_end.isoformat()})
+    track = select_track(laps, session_key, preferred_track)
     positions = fetch("position", session_key=session_key)
     initial_positions = {}
     for row in positions:
@@ -110,12 +176,13 @@ def main(race, metadata_only=False):
         "sessionKey": session_key,
         "start": starts[0]["date"],
         "duration": round((race_end - race_start) / 1000, 1),
+        "totalLaps": total_laps or max(row["lap_number"] for row in laps),
         "drivers": sorted([{
             "number": row["driver_number"], "name": row["full_name"].title(),
             "code": row["name_acronym"], "team": row["team_name"],
             "color": f"#{row['team_colour']}"
         } for row in drivers], key=lambda row: row["number"]),
-        "track": [[row["x"], row["y"]] for row in track_rows[::2]],
+        "track": track,
         "locations": {},
         "positions": sorted([[0, number, position] for number, position in initial_positions.items()]
                             + [[offset(row["date"], race_start), row["driver_number"], row["position"]]
@@ -140,12 +207,30 @@ def main(race, metadata_only=False):
         replay["locations"][str(number)] = sample_locations(rows, race_start, race_end)
         time.sleep(0.15)
 
-    write_replay(output, with_session_metadata(replay, session))
+    if not replay["positions"] or not replay["laps"] or sum(bool(rows) for rows in replay["locations"].values()) < len(drivers) * 0.8:
+        raise ValueError(f"Session {session_key} has incomplete race telemetry")
+    replay = with_session_metadata(replay, session)
+    write_replay(output, with_race_events(replay, fetch_starting_grid(session_key), fetch_overtakes(session_key)))
+
+
+def main(race, metadata_only=False):
+    session_key, track_driver, track_lap_number = RACES[race]
+    output = DATA_DIRECTORY / f"{race}-2026.json"
+    sessions = fetch("sessions", session_key=session_key)
+    if len(sessions) != 1:
+        raise ValueError("Expected exactly one race session")
+    session = sessions[0]
+    if metadata_only:
+        replay = json.loads(output.read_text())
+        replay = with_session_metadata(replay, session)
+        write_replay(output, with_race_events(replay, fetch_starting_grid(session_key), fetch_overtakes(session_key)))
+        return
+    build_replay(session, output, preferred_track=(track_driver, track_lap_number))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--race", choices=RACES, default="monza")
-    parser.add_argument("--metadata-only", action="store_true", help="Refresh session metadata without downloading telemetry")
+    parser.add_argument("--metadata-only", action="store_true", help="Refresh session metadata, grid, and overtakes without downloading telemetry")
     args = parser.parse_args()
     main(args.race, args.metadata_only)

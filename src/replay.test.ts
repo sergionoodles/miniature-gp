@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { carLocation, raceStatus, type RaceEvent } from './replay'
+import { carLocation, isReplay, raceStatus, type RaceEvent } from './replay'
 
 describe('carLocation', () => {
   it('interpolates car movement at replay time', () => {
@@ -19,4 +19,11 @@ it('shows the red flag until the session resumes', () => {
   ]
   expect(raceStatus(events, 15)).toBe('Red flag')
   expect(raceStatus(events, 31)).toBe('Racing')
+})
+
+it('requires grid and overtake data in a replay', () => {
+  const replay = { duration: 10, start: '2026-09-06', drivers: [], track: [], locations: {}, positions: [], laps: [], pits: [], weather: [], raceControl: [], startingGrid: [], startingGridSource: 'position', overtakes: [] }
+  expect(isReplay(replay)).toBe(true)
+  expect(isReplay({ ...replay, overtakes: undefined })).toBe(false)
+  expect(isReplay({ ...replay, startingGrid: undefined })).toBe(false)
 })

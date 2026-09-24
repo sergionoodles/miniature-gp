@@ -1,6 +1,10 @@
 import * as THREE from 'three'
+import type { GridEntry } from './replay'
 
 const CIRCUIT_SPAN = 180
+const GRID_START_OFFSET = 2
+const GRID_ROW_SPACING = 3.5
+const GRID_LANE_OFFSET = 0.72
 
 export function createProjection(points: [number, number][]) {
   if (!points.length) throw new Error('Circuit requires points')
@@ -13,6 +17,29 @@ export function createProjection(points: [number, number][]) {
   const scale = CIRCUIT_SPAN / Math.max(maxX - minX, maxY - minY, 1)
   return (x: number, y: number, height = 0) =>
     new THREE.Vector3(((minY + maxY) / 2 - y) * scale, height, ((minX + maxX) / 2 - x) * scale)
+}
+
+export function startingGridLocations(track: THREE.Vector3[], grid: GridEntry[]) {
+  const locations = new Map<number, { position: THREE.Vector3; rotation: number }>()
+  for (const [driver, place] of grid) {
+    let remaining = GRID_START_OFFSET + Math.floor((place - 1) / 2) * GRID_ROW_SPACING
+    let index = 0
+    while (remaining > 0) {
+      const previous = (index - 1 + track.length) % track.length
+      const segment = track[index].distanceTo(track[previous])
+      if (remaining <= segment) {
+        const forward = track[index].clone().sub(track[previous]).normalize()
+        const center = track[index].clone().addScaledVector(forward, -remaining)
+        center.addScaledVector(new THREE.Vector3(-forward.z, 0, forward.x), place % 2 ? -GRID_LANE_OFFSET : GRID_LANE_OFFSET)
+        center.y = 0.08
+        locations.set(driver, { position: center, rotation: Math.atan2(forward.x, forward.z) })
+        break
+      }
+      remaining -= segment
+      index = previous
+    }
+  }
+  return locations
 }
 
 export function createRibbonGeometry(points: THREE.Vector3[], width: number, height: number, offset = 0) {

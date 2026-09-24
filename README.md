@@ -13,7 +13,7 @@ Miniature GP turns a Formula 1 race into a small, fixed-view 3D replay. Watch th
 
 The webpage uses React and Three.js. A bundled replay file contains the timing, car locations, and events sourced from [OpenF1](https://openf1.org/). The track follows a recorded lap, aligned with the supplied track map; the surroundings are a simple 3D interpretation of the aerial reference. Playback reads the local file, so watching the race does not call the OpenF1 API.
 
-For now, the race selector contains only Monza 2026. More historical races can be added as local replay files once this first circuit is ready.
+The race selector reads a generated catalog of available 2026 replays. New circuits use their recorded GPS lap for the track and procedural scenery.
 
 ## Run locally
 
@@ -21,3 +21,15 @@ For now, the race selector contains only Monza 2026. More historical races can b
 pnpm install
 pnpm dev
 ```
+
+## Import 2026 races
+
+From the repository root, run the importer with Python 3.12 or newer:
+
+```bash
+python scripts/import_2026_races.py
+```
+
+It discovers completed 2026 Grand Prix races from OpenF1, downloads missing replays into `public/data/`, and updates `public/data/races-2026.json` for the race selector. Rerunning it skips races already imported; future, cancelled, and unfinished races wait for a later run. OpenF1 temporarily restricts free API access around live sessions, starting 30 minutes before and ending 30 minutes after; the script waits and retries every five minutes when that happens. No Python packages need to be installed.
+
+The [Import 2026 races](.github/workflows/import-2026-races.yml) GitHub Action runs daily at 04:17 UTC. You can also start it from **Actions → Import 2026 races → Run workflow** to backfill available races immediately. The Action commits generated replay and catalog files to the branch it runs on.

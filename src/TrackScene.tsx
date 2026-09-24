@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
-import { frameCircuitCameraInPlace } from './circuitGeometry'
+import { frameCircuitCameraInPlace, startingGridLocations } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
 import { createDriverLabels, createGhost, createHoverIsolation, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
@@ -15,17 +15,18 @@ type Props = {
   hoveredDriver: number | null
   stops: Map<number, StoppedInterval[]>
   selectedDriver: number | null
+  showStartingGrid: boolean
   onSelectDriver: (driver: number | null) => void
 }
 
-export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDriver, stops, onSelectDriver }: Props) {
+export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const optionsRef = useRef({ selectedDriver, hoveredDriver })
+  const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
   const [view, setView] = useState<'overview' | 'top'>('overview')
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver } }, [selectedDriver, hoveredDriver])
+  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, showStartingGrid } }, [selectedDriver, hoveredDriver, showStartingGrid])
 
   useEffect(() => {
     const container = containerRef.current
@@ -38,6 +39,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       return
     }
     const { scene, cars, project, width, depth, track, updateLighting } = buildCircuit(replay, circuit)
+    const gridLocations = startingGridLocations(track, replay.startingGrid)
     const ghosts = new Map(replay.drivers.map((driver) => {
       const ghost = createGhost(driver)
       scene.add(ghost)
@@ -133,19 +135,25 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
       }
       marker.visible = false
       for (const [number, car] of cars) {
-        const location = carLocation(replay.locations[String(number)] ?? [], timeRef.current)
-        const stop = stoppedAt(stops.get(number) ?? [], timeRef.current)
+        const gridLocation = options.showStartingGrid ? gridLocations.get(number) : undefined
+        const location = options.showStartingGrid ? null : carLocation(replay.locations[String(number)] ?? [], timeRef.current)
+        const stop = options.showStartingGrid ? null : stoppedAt(stops.get(number) ?? [], timeRef.current)
         const ghost = ghosts.get(number)
         const label = labels.get(number)
-        car.visible = location !== null && !stop
+        car.visible = Boolean(gridLocation || location && !stop)
         if (ghost) {
           if (stop) positionGhostInPlace(ghost, project(stop[2], stop[3]), track)
           ghost.visible = stop !== null
         }
         if (label) label.visible = false
-        if (!location || stop) continue
-        car.position.copy(project(location.x, location.y, 0.08))
-        car.rotation.y = Math.atan2(-Math.cos(location.heading), -Math.sin(location.heading))
+        if (!gridLocation && (!location || stop)) continue
+        if (gridLocation) {
+          car.position.copy(gridLocation.position)
+          car.rotation.y = gridLocation.rotation
+        } else if (location) {
+          car.position.copy(project(location.x, location.y, 0.08))
+          car.rotation.y = Math.atan2(-Math.cos(location.heading), -Math.sin(location.heading))
+        }
         if ((options.hoveredDriver ?? options.selectedDriver) === number) {
           marker.visible = true
           marker.position.copy(car.position).setY(0.16)
@@ -200,7 +208,7 @@ export function TrackScene({ replay, timeRef, circuit, selectedDriver, hoveredDr
   return <>
     <div className="track-canvas" ref={containerRef} />
     {error && <div className="scene-error" role="alert">{error}</div>}
-    {selectedDriver !== null && <button className="locate-driver" type="button" disabled={!carLocation(replay.locations[String(selectedDriver)] ?? [], timeRef.current) || stoppedAt(stops.get(selectedDriver) ?? [], timeRef.current) !== null} onClick={() => actionRef.current('locate')}>⌖ Locate driver</button>}
+    {selectedDriver !== null && <button className="locate-driver" type="button" disabled={showStartingGrid ? !replay.startingGrid.some(([driver]) => driver === selectedDriver) : !carLocation(replay.locations[String(selectedDriver)] ?? [], timeRef.current) || stoppedAt(stops.get(selectedDriver) ?? [], timeRef.current) !== null} onClick={() => actionRef.current('locate')}>⌖ Locate driver</button>}
     <div className="camera-toolbar" aria-label="Camera controls" role="group">
       <div className="view-switch">
         <button type="button" aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>◈ <span>Orbit</span></button>

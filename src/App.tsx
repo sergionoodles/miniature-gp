@@ -3,11 +3,17 @@ import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCar
 import { TrackScene } from './TrackScene'
 import { carLocation, clockLabel, isReplay, lapsAt, latestAt, positionsAt, raceStatus, type Replay } from './replay'
 
-const RACES = {
-  netherlands: { url: '/data/netherlands-2026.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Circuit Zandvoort', grandPrix: 'Dutch Grand Prix', date: '2026-08-23', laps: 72 },
-  monza: { url: '/data/monza-2026.json', label: 'Italian Grand Prix · Monza', circuit: 'Autodromo Nazionale Monza', grandPrix: 'Italian Grand Prix', date: '2026-09-06', laps: 53 },
-} as const
-const RACE_OPTIONS = Object.entries(RACES).sort(([, first], [, second]) => second.date.localeCompare(first.date))
+type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
+const FALLBACK_RACES: RaceOption[] = [
+  { id: '11361', url: '/data/monza-2026.json', label: 'Italian Grand Prix · Monza', circuit: 'Autodromo Nazionale Monza', grandPrix: 'Italian Grand Prix', location: 'Monza', countryCode: 'ITA', date: '2026-09-06', laps: 53 },
+  { id: '11353', url: '/data/netherlands-2026.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Circuit Zandvoort', grandPrix: 'Dutch Grand Prix', location: 'Zandvoort', countryCode: 'NLD', date: '2026-08-23', laps: 72 },
+]
+const isRaceOption = (value: unknown): value is RaceOption => {
+  if (typeof value !== 'object' || value === null) return false
+  const race = value as Record<string, unknown>
+  return ['id', 'url', 'label', 'circuit', 'grandPrix', 'location', 'countryCode', 'date'].every((key) => typeof race[key] === 'string')
+    && typeof race.laps === 'number'
+}
 const formatRaceDate = (date: string) => {
   const [year, month, day] = date.split('-').map(Number)
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(year, month - 1, day))
@@ -15,10 +21,11 @@ const formatRaceDate = (date: string) => {
 const SPEEDS = [1, 2, 5, 10, 30, 60, 120]
 
 export default function App() {
+  const [races, setRaces] = useState(FALLBACK_RACES)
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
-  const [raceId, setRaceId] = useState<keyof typeof RACES>('monza')
-  const race = RACES[raceId]
+  const [raceId, setRaceId] = useState('11361')
+  const race = races.find((option) => option.id === raceId) ?? races[0]
   const [replay, setReplay] = useState<Replay | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [time, setTime] = useState(0)
@@ -29,6 +36,42 @@ export default function App() {
   const timeRef = useRef(0)
   const isPlayingRef = useRef(false)
   const speedRef = useRef(30)
+
+  const selectRace = (nextRaceId: string) => {
+    isPlayingRef.current = false
+    timeRef.current = 0
+    setIsPlaying(false)
+    setHasStarted(false)
+    setCountdown(null)
+    setTime(0)
+    setReplay(null)
+    setError(null)
+    setSelectedDriver(null)
+    setHoveredDriver(null)
+    setRaceId(nextRaceId)
+  }
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/data/races-2026.json', { signal: controller.signal })
+      .then((response) => {
+        if (response.status === 404) return null
+        if (!response.ok) throw new Error(`Race catalog could not be loaded (${response.status}).`)
+        return response.json() as Promise<unknown>
+      })
+      .then((value) => {
+        if (value === null) return
+        if (!Array.isArray(value) || !value.length || !value.every(isRaceOption)) throw new Error('Race catalog is invalid.')
+        const options = [...value].sort((first, second) => second.date.localeCompare(first.date))
+        setRaces(options)
+        selectRace(options[0].id)
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === 'AbortError') return
+        console.error('Using bundled race list:', cause)
+      })
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -47,20 +90,6 @@ export default function App() {
       })
     return () => controller.abort()
   }, [race.url])
-
-  const selectRace = (nextRaceId: keyof typeof RACES) => {
-    isPlayingRef.current = false
-    timeRef.current = 0
-    setIsPlaying(false)
-    setHasStarted(false)
-    setCountdown(null)
-    setTime(0)
-    setReplay(null)
-    setError(null)
-    setSelectedDriver(null)
-    setHoveredDriver(null)
-    setRaceId(nextRaceId)
-  }
 
   useEffect(() => {
     if (!replay) return
@@ -131,22 +160,31 @@ export default function App() {
 
   const order = useMemo(() => {
     if (!replay) return []
-    const positions = positionsAt(replay.positions, time)
+    const positions = time === 0 && !isPlaying
+      ? new Map(replay.startingGrid)
+      : positionsAt(replay.positions, time)
     const laps = lapsAt(replay.laps, time)
     return replay.drivers
       .map((driver) => ({ ...driver, position: positions.get(driver.number) ?? 99, lap: laps.get(driver.number) ?? 1 }))
       .sort((first, second) => first.position - second.position)
-  }, [replay, time])
+  }, [replay, time, isPlaying])
 
   const stops = useMemo(() => replay ? detectStoppedCars(replay) : new Map<number, StoppedInterval[]>(), [replay])
   const weather = replay ? latestAt(replay.weather, time) : null
   const status = replay ? raceStatus(replay.raceControl, time) : 'Loading'
   const leaderLap = order[0]?.lap ?? 1
   const lastPit = replay ? latestAt(replay.pits, time) : null
+  const isRecentPit = lastPit !== null && time - lastPit[0] < 18
+  const lastOvertake = replay ? latestAt(replay.overtakes, time) : null
+  const isRecentOvertake = lastOvertake !== null && time - lastOvertake[0] < 45
+  const overtakingDriver = replay?.drivers.find((driver) => driver.number === lastOvertake?.[1])
+  const overtakenDriver = replay?.drivers.find((driver) => driver.number === lastOvertake?.[2])
   const isRaining = Boolean(weather?.[1])
   const selected = order.find((driver) => driver.number === selectedDriver)
   const isSelectedStopped = selected ? stoppedAt(stops.get(selected.number) ?? [], time) !== null : false
-  const hasSelectedLocation = selected && replay ? carLocation(replay.locations[String(selected.number)] ?? [], time) !== null : false
+  const hasSelectedLocation = selected && replay ? time === 0 && !isPlaying
+    ? replay.startingGrid.some(([driver]) => driver === selected.number)
+    : carLocation(replay.locations[String(selected.number)] ?? [], time) !== null : false
 
   return (
     <div className={`app-shell${isRaining ? ' raining' : ''}`}>
@@ -159,8 +197,8 @@ export default function App() {
         </div>
         <div className="race-picker" role="group" aria-label="Selected race">
           <label>Season<select aria-label="Season" defaultValue="2026"><option value="2026">2026</option></select></label>
-          <label>Grand Prix<select aria-label="Grand Prix" value={raceId} onChange={(event) => selectRace(event.target.value === 'monza' ? 'monza' : 'netherlands')}>
-            {RACE_OPTIONS.map(([id, option]) => <option key={id} value={id}>{option.label} · {formatRaceDate(option.date)}</option>)}
+          <label>Grand Prix<select aria-label="Grand Prix" value={race.id} onChange={(event) => selectRace(event.target.value)}>
+            {races.map((option) => <option key={option.id} value={option.id}>{option.label} · {formatRaceDate(option.date)}</option>)}
           </select></label>
         </div>
       </header>
@@ -191,11 +229,11 @@ export default function App() {
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay ? <TrackScene key={raceId} replay={replay} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
+          {replay ? <TrackScene key={race.id} replay={replay} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
           <div className="stage-topline">
             <div className="stage-title">
-              <span className="stage-kicker">{raceId === 'monza' ? 'ITA' : 'NLD'} / 2026</span>
-              <h1>{raceId === 'monza' ? 'Monza' : 'Zandvoort'}</h1>
+              <span className="stage-kicker">{race.countryCode} / {race.date.slice(0, 4)}</span>
+              <h1>{race.location}</h1>
               <span>{race.grandPrix} <b>·</b> {formatRaceDate(race.date)}</span>
             </div>
             <div className={`status-chip ${status === 'Red flag' ? 'flag-red' : status.includes('afety') ? 'flag-yellow' : ''}`}>
@@ -208,7 +246,9 @@ export default function App() {
             {weather && <span className="weather-details">Air {weather[2].toFixed(1)}° · Track {weather[3].toFixed(1)}°</span>}
           </div>
           {status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}
-          {lastPit && time - lastPit[0] < 18 && <div className="pit-notice">Pit stop · #{lastPit[1]} · lap {lastPit[2]}</div>}
+          {isRecentOvertake && lastOvertake && overtakingDriver && overtakenDriver && (!isRecentPit || lastPit && lastOvertake[0] > lastPit[0])
+            ? <div className="pit-notice">Position gained · {overtakingDriver.code} past {overtakenDriver.code} · P{lastOvertake[3]}</div>
+            : isRecentPit && lastPit && <div className="pit-notice">Pit stop · #{lastPit[1]} · lap {lastPit[2]}</div>}
           {replay && (!hasStarted || countdown !== null) && <div className="race-start-hud">
             {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start race</button> : <div className="race-start-countdown" role="status" aria-live="polite"><span>RACE START</span><strong>{countdown}</strong><div className={`start-lights step-${4 - countdown}`} aria-hidden="true"><i /><i /><i /></div></div>}
           </div>}

@@ -5,7 +5,7 @@ import type { LocationSample, Replay } from './replay'
 function fixture(): Replay {
   const stopped: LocationSample[] = Array.from({ length: 65 }, (_, time) => [time, time < 5 ? time * 100 : time < 50 ? 500 : 500 + (time - 49) * 100, 0])
   const moving: LocationSample[] = Array.from({ length: 65 }, (_, time) => [time, time * 100, 1000])
-  return { duration: 100, sessionKey: 1, start: '', drivers: [], track: [[0, 0], [1000, 1000]], locations: { '1': stopped, '2': moving, '3': moving, '4': moving }, positions: [], laps: [], pits: [], weather: [], raceControl: [], stints: [] }
+  return { duration: 100, sessionKey: 1, start: '', drivers: [], track: [[0, 0], [1000, 1000]], locations: { '1': stopped, '2': moving, '3': moving, '4': moving }, positions: [], startingGrid: [], startingGridSource: 'position', overtakes: [], laps: [], pits: [], weather: [], raceControl: [], stints: [] }
 }
 
 describe('stopped car inference', () => {

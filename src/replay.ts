@@ -1,5 +1,7 @@
 export type LocationSample = [time: number, x: number, y: number]
 export type PositionEvent = [time: number, driver: number, position: number]
+export type GridEntry = [driver: number, position: number]
+export type OvertakeEvent = [time: number, overtakingDriver: number, overtakenDriver: number, position: number]
 export type LapEvent = [time: number, driver: number, lap: number]
 export type PitEvent = [time: number, driver: number, lap: number, duration: number | null]
 export type WeatherEvent = [time: number, rainfall: number, air: number, track: number]
@@ -23,6 +25,9 @@ export type Replay = {
   track: [number, number][]
   locations: Record<string, LocationSample[]>
   positions: PositionEvent[]
+  startingGrid: GridEntry[]
+  startingGridSource: 'starting_grid' | 'position'
+  overtakes: OvertakeEvent[]
   laps: LapEvent[]
   pits: PitEvent[]
   weather: WeatherEvent[]
@@ -41,6 +46,9 @@ export function isReplay(value: unknown): value is Replay {
     && typeof record.locations === 'object'
     && record.locations !== null
     && Array.isArray(record.positions)
+    && Array.isArray(record.startingGrid)
+    && (record.startingGridSource === 'starting_grid' || record.startingGridSource === 'position')
+    && Array.isArray(record.overtakes)
     && Array.isArray(record.laps)
     && Array.isArray(record.pits)
     && Array.isArray(record.weather)
