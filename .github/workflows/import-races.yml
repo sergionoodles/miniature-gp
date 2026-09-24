@@ -2,8 +2,7 @@ name: Import current season races
 
 on:
   schedule:
-    - cron: '17 4 * * *'
-  workflow_dispatch:
+    - cron: '0 2 * * 1'
 
 permissions:
   contents: write

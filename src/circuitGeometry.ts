@@ -62,13 +62,13 @@ export function createRibbonGeometry(points: THREE.Vector3[], width: number, hei
     const current = index % points.length
     const previous = points[isClosed ? (current - 1 + points.length) % points.length : Math.max(0, current - 1)]
     const next = points[isClosed ? (current + 1) % points.length : Math.min(points.length - 1, current + 1)]
-    const direction = next.clone().sub(previous).normalize()
+    const direction = next.clone().sub(previous).setY(0).normalize()
     const across = new THREE.Vector3(-direction.z, 0, direction.x)
     const center = points[current]
     if (index) distance += center.distanceTo(points[index - 1])
     for (const side of [-1, 1]) {
       const point = center.clone().addScaledVector(across, offset + side * width / 2)
-      positions.push(point.x, height, point.z)
+      positions.push(point.x, center.y + height, point.z)
       uvs.push(side === -1 ? 0 : 1, distance / 4)
     }
     if (index < segments) {

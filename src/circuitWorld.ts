@@ -10,8 +10,10 @@ import { box, createCar, createGrandstand, createLabel, createMergedMesh, create
 import { addBuildings, addGroves, addTrees, addWater, addYachts } from './sceneryMeshes'
 import { planScenery, type LandmarkPlacement, type StandFootprint } from './sceneryPlan'
 import type { TerrainField } from './terrainField'
+import { createBridgeWallGeometry, createTrackHeightLookup, findTrackCrossings, trackElevations, type TrackCrossing } from './trackCrossings'
 
 const TRACK_WIDTH = 3.2
+const RUNOFF_WIDTH = 7.5
 const TRACK_SAMPLES = 900
 const TERRAIN_MARGIN = 360
 const TERRAIN_SEGMENTS = 160
@@ -79,10 +81,11 @@ function addTerrain(scene: THREE.Scene, field: TerrainField, environment: Circui
   scene.add(floor)
 }
 
+// Takes the track with its bridge elevations in y.
 function addTrack(scene: THREE.Scene, track: THREE.Vector3[], vergeColor: number) {
   const asphaltTexture = createSurfaceTexture('#616765', '#828581')
   const surfaces: [number, number, number, number][] = [
-    [7.5, -0.02, 0xc4b99b, 0], [4.5, 0.01, vergeColor, 0],
+    [RUNOFF_WIDTH, -0.02, 0xc4b99b, 0], [4.5, 0.01, vergeColor, 0],
     [TRACK_WIDTH + 0.22, 0.04, 0xb4d5d8, 0], [TRACK_WIDTH, 0.055, DRY_ASPHALT.getHex(), 0],
   ]
   const asphalt = new THREE.MeshStandardMaterial({ color: DRY_ASPHALT, roughness: DRY_ASPHALT_ROUGHNESS, map: asphaltTexture })
@@ -103,7 +106,7 @@ function addTrack(scene: THREE.Scene, track: THREE.Vector3[], vergeColor: number
     if (before.dot(after) > 0.985) continue
     for (const side of [-1, 1]) {
       dummy.position.copy(point).add(new THREE.Vector3(-direction.z, 0, direction.x).multiplyScalar(side * 1.83))
-      dummy.position.y = 0.07
+      dummy.position.y = point.y + 0.07
       dummy.rotation.y = Math.atan2(direction.x, direction.z)
       dummy.updateMatrix()
       kerbs.setMatrixAt(count, dummy.matrix)
@@ -127,6 +130,13 @@ function addTrack(scene: THREE.Scene, track: THREE.Vector3[], vergeColor: number
   label.scale.multiplyScalar(1.3)
   scene.add(label)
   return asphalt
+}
+
+function addBridges(scene: THREE.Scene, track: THREE.Vector3[], elevations: number[], crossings: TrackCrossing[]) {
+  if (!crossings.length) return
+  const walls = new THREE.Mesh(createBridgeWallGeometry(track, elevations, crossings, RUNOFF_WIDTH / 2), new THREE.MeshStandardMaterial({ color: 0xb9b7ae, roughness: 0.9, side: THREE.DoubleSide }))
+  walls.castShadow = walls.receiveShadow = true
+  scene.add(walls)
 }
 
 function addStands(scene: THREE.Scene, stands: StandFootprint[]) {
@@ -173,7 +183,10 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
   const updateRaceLighting = createRaceLighting(scene)
   addTerrain(scene, plan.field, environment)
   addWater(scene, plan.field, environment)
-  const asphalt = addTrack(scene, track, environment.ground.verge)
+  const crossings = findTrackCrossings(track)
+  const elevations = trackElevations(track, crossings)
+  const asphalt = addTrack(scene, track.map((point, index) => point.clone().setY(elevations[index])), environment.ground.verge)
+  addBridges(scene, track, elevations, crossings)
   const nightMaterials = addScenery(scene, plan, environment)
   const rain = createRain(plan.field.width, plan.field.depth)
   scene.add(rain.streaks)
@@ -194,5 +207,5 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
     scene.add(car)
     return [driver.number, car] as const
   }))
-  return { scene, cars, project, width, depth, track, updateAtmosphere }
+  return { scene, cars, project, width, depth, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
 }

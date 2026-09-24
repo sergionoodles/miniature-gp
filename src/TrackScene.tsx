@@ -40,7 +40,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       setError('The 3D view needs WebGL. Try a browser with hardware acceleration enabled. Race timing and playback are still available.')
       return
     }
-    const { scene, cars, project, width, depth, track, updateAtmosphere } = buildCircuit(replay, circuit, weatherAt)
+    const { scene, cars, project, width, depth, track, trackHeightAt, updateAtmosphere } = buildCircuit(replay, circuit, weatherAt)
     const gridLocations = startingGridLocations(track, replay.startingGrid)
     const ghosts = new Map(replay.drivers.map((driver) => {
       const ghost = createGhost(driver)
@@ -68,7 +68,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     const resetCamera = (top: boolean) => {
       controls.target.set(0, 0, 0)
       camera.position.set(top ? 0 : 15, top ? 240 : 185, top ? 0.01 : 145)
-      camera.zoom = 1
+      camera.zoom = 1.15
       camera.lookAt(controls.target)
       camera.updateProjectionMatrix()
       controls.update()
@@ -166,11 +166,12 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
           }
           const pose = isStarting && startingPose ? interpolateStartPose(startingPose, telemetryPose, timeRef.current) : telemetryPose
           car.position.copy(pose.position)
+          car.position.y += trackHeightAt(pose.position, new THREE.Vector3(Math.sin(pose.rotation), 0, Math.cos(pose.rotation)))
           car.rotation.y = pose.rotation
         }
         if ((activeHover ?? options.selectedDriver) === number) {
           marker.visible = true
-          marker.position.copy(car.position).setY(0.16)
+          marker.position.copy(car.position).setY(car.position.y + 0.08)
           if (label) {
             label.visible = true
             label.position.copy(car.position).add(new THREE.Vector3(0, 4, 0))

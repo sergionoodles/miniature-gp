@@ -17,6 +17,13 @@ describe('circuit projection', () => {
   })
 })
 
+it('raises the road with the elevation of each point', () => {
+  const geometry = createRibbonGeometry([new Vector3(0, 0, 0), new Vector3(10, 2, 0), new Vector3(20, 0, 0)], 2, 0.1, 0, false)
+  expect(geometry.getAttribute('position').getY(2)).toBeCloseTo(2.1)
+  expect(geometry.getAttribute('position').getY(0)).toBeCloseTo(0.1)
+  geometry.dispose()
+})
+
 it('builds a continuous road with upward-facing normals', () => {
   const geometry = createRibbonGeometry([
     new Vector3(-10, 0, -10), new Vector3(10, 0, -10),
