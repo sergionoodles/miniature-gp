@@ -11,7 +11,11 @@ const FAR_WATER_SIZE = 2000
 // One facade bay (a window and its share of wall) in scene units.
 const FACADE_BAY_SIZE = 1.5
 const WATER_RIPPLE_SIZE = 18
-const WATER_DRIFT = new THREE.Vector2(0.003, 0.0012)
+// Kept faint so the water only hints at movement and sky reflections.
+const WATER_DRIFT = new THREE.Vector2(0.0006, 0.00024)
+const WATER_RIPPLE_STRENGTH = 0.08
+const WATER_ROUGHNESS = { detailed: 0.6, standard: 0.8 }
+const WATER_REFLECTION = { detailed: 0.15, standard: 0.1 }
 const WATER_SEGMENTS = 128
 const WINDOW_GLOW = 0xd8d8d8
 const DEEP_WATER_SHADE = 0.75
@@ -293,7 +297,7 @@ export function addWater(scene: THREE.Scene, field: TerrainField, environment: C
   if (!hasWater) return () => {}
   const ripples = createWaterNormalTexture()
   // Standard quality keeps the shallows colouring but drops the rippling reflections.
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: isDetailed ? 0.2 : 0.5, metalness: 0.05, normalMap: isDetailed ? ripples : null, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: isDetailed ? 0.8 : 0.4 })
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: isDetailed ? WATER_ROUGHNESS.detailed : WATER_ROUGHNESS.standard, metalness: 0, normalMap: isDetailed ? ripples : null, normalScale: new THREE.Vector2(WATER_RIPPLE_STRENGTH, WATER_RIPPLE_STRENGTH), envMapIntensity: isDetailed ? WATER_REFLECTION.detailed : WATER_REFLECTION.standard })
   const deep = new THREE.Color(environment.water.color).multiplyScalar(DEEP_WATER_SHADE)
   const shallow = new THREE.Color(environment.water.features.some(({ kind }) => kind === 'coast') ? SHALLOW_SEA : SHALLOW_FRESH)
   // The terrain dips below this plane wherever the field reports water; beyond the terrain the
