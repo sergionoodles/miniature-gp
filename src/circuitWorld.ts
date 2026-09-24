@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { createAlbertParkScenery } from './albertPark'
 import { createBahrainScenery } from './bahrain'
 import { createJeddahScenery } from './jeddah'
+import { createShanghaiScenery } from './shanghai'
 import { createRaceLighting } from './raceLighting'
 import type { Replay } from './replay'
 import { canPlaceStructure, createProjection, createRibbonGeometry } from './circuitGeometry'
@@ -210,7 +211,8 @@ export function buildCircuit(replay: Replay, circuit: string) {
   const isAlbertPark = circuit === 'Albert Park Circuit'
   const isBahrain = circuit === 'Bahrain International Circuit'
   const isJeddah = circuit === 'Jeddah Corniche Circuit'
-  const hasCustomScenery = isAlbertPark || isBahrain || isJeddah
+  const isShanghai = circuit === 'Shanghai International Circuit'
+  const hasCustomScenery = isAlbertPark || isBahrain || isJeddah || isShanghai
   const isCoastal = circuit.includes('Zandvoort')
   const scene = new THREE.Scene()
   const updateLighting = createRaceLighting(scene, replay)
@@ -221,6 +223,7 @@ export function buildCircuit(replay: Replay, circuit: string) {
   if (isAlbertPark) scene.add(createAlbertParkScenery(track))
   else if (isBahrain) scene.add(createBahrainScenery(track))
   else if (isJeddah) scene.add(createJeddahScenery(track))
+  else if (isShanghai) scene.add(createShanghaiScenery(track))
   else addScenery(scene, track, isCoastal, width, depth)
   const cars = new Map(replay.drivers.map((driver) => {
     const car = createCar(driver)

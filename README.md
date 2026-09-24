@@ -22,14 +22,20 @@ pnpm install
 pnpm dev
 ```
 
-## Import 2026 races
+## Import races
 
 From the repository root, run the importer with Python 3.12 or newer:
 
 ```bash
-python scripts/import_2026_races.py
+python scripts/import_races.py
 ```
 
-It discovers completed 2026 Grand Prix races from OpenF1, downloads missing replays into `public/data/`, and updates `public/data/races-2026.json` for the race selector. Rerunning it skips races already imported; future, cancelled, and unfinished races wait for a later run. OpenF1 temporarily restricts free API access around live sessions, starting 30 minutes before and ending 30 minutes after; the script waits and retries every five minutes when that happens. No Python packages need to be installed.
+To import another season, pass its year:
 
-The [Import 2026 races](.github/workflows/import-2026-races.yml) GitHub Action runs daily at 04:17 UTC. You can also start it from **Actions → Import 2026 races → Run workflow** to backfill available races immediately. The Action commits generated replay and catalog files to the branch it runs on.
+```bash
+python scripts/import_races.py --year 2025
+```
+
+The default is the current UTC year. The script discovers completed Grand Prix races from OpenF1, downloads missing replays into `public/data/`, and updates `public/data/races-<year>.json`. Rerunning it skips races already imported; future, cancelled, and unfinished races wait for a later run. OpenF1 temporarily restricts free API access around live sessions, starting 30 minutes before and ending 30 minutes after; the script waits and retries every five minutes when that happens. No Python packages need to be installed. The website currently reads the 2026 catalog.
+
+The [Import current season races](.github/workflows/import-races.yml) GitHub Action runs daily at 04:17 UTC. You can also start it from **Actions → Import current season races → Run workflow** to backfill available races immediately. The Action commits generated replay and catalog files to the branch it runs on.

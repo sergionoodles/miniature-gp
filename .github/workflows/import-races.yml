@@ -1,4 +1,4 @@
-name: Import 2026 races
+name: Import current season races
 
 on:
   schedule:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: import-2026-races
+  group: import-races
   cancel-in-progress: false
 
 jobs:
@@ -26,14 +26,14 @@ jobs:
       - name: Import available races
         id: import
         continue-on-error: true
-        run: python scripts/import_2026_races.py
+        run: python scripts/import_races.py
       - name: Publish replay files and catalog
         run: |
           git add -- 'public/data/*.json'
           if git diff --cached --quiet; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Import newly available 2026 races'
+          git commit -m 'Import newly available races'
           git push
       - name: Report import errors
         if: steps.import.outcome == 'failure'

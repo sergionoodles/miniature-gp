@@ -1,5 +1,7 @@
 import json
 import math
+import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -9,7 +11,7 @@ from urllib.error import HTTPError
 from unittest.mock import patch
 
 from build_monza_replay import fetch, select_track
-from import_2026_races import local_race_date, run_import
+from import_races import local_race_date, run_import
 
 
 NOW = datetime(2026, 9, 24, tzinfo=timezone.utc)
@@ -31,13 +33,63 @@ def replay(key):
 
 
 class ImportRacesTest(unittest.TestCase):
+    def test_uses_current_year_when_no_year_is_given(self):
+        current_time = datetime(2027, 9, 24, tzinfo=timezone.utc)
+
+        def fetch_stub(endpoint, **filters):
+            if filters.get("year") != 2027:
+                raise AssertionError("Requested the wrong season")
+            return [session(1, "2027-09-20")] if endpoint == "sessions" else [meeting(1)]
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "existing-2027.json").write_text(json.dumps(replay(1)))
+            with patch("import_races.fetch", side_effect=fetch_stub):
+                run_import(directory, current_time)
+            self.assertEqual(json.loads((directory / "races-2027.json").read_text())[0]["id"], "1")
+
+    def test_explicit_year_overrides_current_year(self):
+        def fetch_stub(endpoint, **filters):
+            if endpoint in ("sessions", "meetings") and filters.get("year") != 2025:
+                raise AssertionError("Requested the wrong season")
+            if endpoint == "sessions":
+                return [session(1, "2025-09-20"), session(2, "2025-09-21")]
+            if endpoint == "meetings":
+                return [meeting(1), meeting(2)]
+            if endpoint == "race_control":
+                return [{"category": "SessionStatus", "message": "SESSION FINISHED"}]
+            return [{"number_of_laps": 58}]
+
+        def build_stub(race_session, path, controls, total_laps):
+            path.write_text(json.dumps({**replay(race_session["session_key"]), "totalLaps": total_laps}))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "existing-2025.json").write_text(json.dumps(replay(1)))
+            (directory / "existing-2026.json").write_text(json.dumps(replay(2)))
+            with patch("import_races.fetch", side_effect=fetch_stub), patch("import_races.build_replay", side_effect=build_stub):
+                run_import(directory, NOW, year=2025)
+            urls = [entry["url"] for entry in json.loads((directory / "races-2025.json").read_text())]
+            self.assertEqual(urls, ["/data/race-2-2025.json", "/data/existing-2025.json"])
+            self.assertTrue((directory / "race-2-2025.json").exists())
+            self.assertFalse((directory / "races-2026.json").exists())
+
+    def test_command_line_documents_year_flag(self):
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name("import_races.py")), "--help"],
+                                capture_output=True, text=True, check=True)
+        self.assertIn("--year", result.stdout)
+
+    def test_rejects_years_before_openf1_history(self):
+        with tempfile.TemporaryDirectory() as temporary, patch("import_races.fetch", return_value=[]), self.assertRaisesRegex(ValueError, "2023"):
+            run_import(Path(temporary), NOW, year=2022)
+
     def test_keeps_published_races_when_session_listing_is_incomplete(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             (directory / "existing-2026.json").write_text(json.dumps(replay(1)))
             previous = [{"id": "1", "date": "2026-09-20", "url": "/data/existing-2026.json"}]
             (directory / "races-2026.json").write_text(json.dumps(previous))
-            with patch("import_2026_races.fetch", return_value=[]):
+            with patch("import_races.fetch", return_value=[]):
                 run_import(directory, NOW)
             self.assertEqual(json.loads((directory / "races-2026.json").read_text()), previous)
 
@@ -66,7 +118,7 @@ class ImportRacesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             (directory / "existing-2026.json").write_text(json.dumps(replay(1)))
-            with patch("import_2026_races.fetch", side_effect=fetch_stub), patch("import_2026_races.build_replay", side_effect=build_stub) as build:
+            with patch("import_races.fetch", side_effect=fetch_stub), patch("import_races.build_replay", side_effect=build_stub) as build:
                 run_import(directory, NOW)
                 first_catalog = (directory / "races-2026.json").read_text()
                 run_import(directory, NOW)
@@ -97,7 +149,7 @@ class ImportRacesTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            with patch("import_2026_races.fetch", side_effect=fetch_stub), patch("import_2026_races.build_replay", side_effect=build_stub):
+            with patch("import_races.fetch", side_effect=fetch_stub), patch("import_races.build_replay", side_effect=build_stub):
                 with self.assertRaisesRegex(RuntimeError, "1 race import"):
                     run_import(directory, NOW)
             entries = json.loads((directory / "races-2026.json").read_text())

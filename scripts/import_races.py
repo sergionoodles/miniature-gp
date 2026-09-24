@@ -1,5 +1,6 @@
-"""Download newly completed 2026 Grand Prix races and update the website catalog."""
+"""Download newly completed Grand Prix races and update the website catalog."""
 
+import argparse
 import json
 import sys
 from datetime import datetime, timedelta, timezone
@@ -9,8 +10,7 @@ from urllib.error import HTTPError
 from build_monza_replay import DATA_DIRECTORY, build_replay, fetch
 
 
-YEAR = 2026
-CATALOG = DATA_DIRECTORY / f"races-{YEAR}.json"
+FIRST_AVAILABLE_YEAR = 2023
 
 
 def local_race_date(session):
@@ -35,10 +35,10 @@ def race_entry(session, meeting, replay, filename):
     }
 
 
-def existing_replays(directory):
+def existing_replays(directory, year):
     replays = {}
-    for path in directory.glob(f"*-{YEAR}.json"):
-        if path.name == CATALOG.name:
+    for path in directory.glob(f"*-{year}.json"):
+        if path.name == f"races-{year}.json":
             continue
         replay = json.loads(path.read_text())
         session_key = replay["sessionKey"]
@@ -55,13 +55,16 @@ def write_catalog(entries, path):
     temporary.replace(path)
 
 
-def run_import(directory=DATA_DIRECTORY, now=None):
+def run_import(directory=DATA_DIRECTORY, now=None, year=None):
     now = now or datetime.now(timezone.utc)
-    catalog_path = directory / CATALOG.name
+    year = now.year if year is None else year
+    if year < FIRST_AVAILABLE_YEAR:
+        raise ValueError(f"OpenF1 race data starts in {FIRST_AVAILABLE_YEAR}")
+    catalog_path = directory / f"races-{year}.json"
     previous_entries = json.loads(catalog_path.read_text()) if catalog_path.exists() else []
-    sessions = fetch("sessions", year=YEAR, session_name="Race")
-    meetings = {row["meeting_key"]: row for row in fetch("meetings", year=YEAR)}
-    replays = existing_replays(directory)
+    sessions = fetch("sessions", year=year, session_name="Race")
+    meetings = {row["meeting_key"]: row for row in fetch("meetings", year=year)}
+    replays = existing_replays(directory, year)
     entries = []
     failures = []
     for session in sorted(sessions, key=lambda row: row["date_start"]):
@@ -90,7 +93,7 @@ def run_import(directory=DATA_DIRECTORY, now=None):
             if not any(row.get("number_of_laps") for row in results):
                 print(f"Waiting for results: {meeting['meeting_name']} ({session_key})", flush=True)
                 continue
-            path = directory / f"race-{session_key}-{YEAR}.json"
+            path = directory / f"race-{session_key}-{year}.json"
             print(f"Importing {meeting['meeting_name']} ({session_key})", flush=True)
             total_laps = max(row["number_of_laps"] for row in results if row.get("number_of_laps"))
             build_replay(session, path, controls, total_laps=total_laps)
@@ -111,4 +114,7 @@ def run_import(directory=DATA_DIRECTORY, now=None):
 
 
 if __name__ == "__main__":
-    run_import()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--year", type=int, help="Season to import (default: current UTC year)")
+    args = parser.parse_args()
+    run_import(year=args.year)

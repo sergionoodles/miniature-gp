@@ -1,6 +1,7 @@
 import { ALBERT_PARK_TRACK } from './albertPark'
 import { BAHRAIN_TRACK } from './bahrain'
 import { JEDDAH_TRACK } from './jeddah'
+import { SHANGHAI_TRACK } from './shanghai'
 import type { Replay } from './replay'
 
 // Empty session data keeps a reference-based model separate from recorded races.
@@ -24,5 +25,9 @@ export const CIRCUIT_PREVIEWS: Partial<Record<string, { replay: Replay; descript
   'jeddah-preview': {
     replay: createPreviewReplay(JEDDAH_TRACK),
     description: 'Jeddah Corniche Circuit, Saudi Arabia.',
+  },
+  'shanghai-preview': {
+    replay: createPreviewReplay(SHANGHAI_TRACK),
+    description: 'Shanghai International Circuit, China.',
   },
 }
