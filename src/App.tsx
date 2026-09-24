@@ -198,7 +198,7 @@ export default function App() {
     const arrivals = notificationsBetween(replay, previousTime, time, speed)
     if (!arrivals.length) return
     const expiresAt = performance.now() + NOTIFICATION_DURATION
-    setNotifications((current) => [...arrivals.reverse().map((notice) => ({ ...notice, expiresAt })), ...current].slice(0, 5))
+    setNotifications((current) => [...arrivals.reverse().map((notice) => ({ ...notice, expiresAt })), ...current].slice(0, 8))
   }, [replay, time, hasStarted, speed])
 
   useEffect(() => {
