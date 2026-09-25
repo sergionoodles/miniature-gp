@@ -370,6 +370,13 @@ export default function App() {
               {LOADER_STEPS.map((step, index) => <li className={index === activeLoaderStep ? 'active' : undefined} aria-current={index === activeLoaderStep ? 'step' : undefined} key={step}>{step}</li>)}
             </ol>
           </div>}
+          <div className="stage-topline">
+            <div className="stage-title">
+              <span className="stage-kicker">{race.countryCode} / {race.date.slice(0, 4)}</span>
+              <h1 className={race.location.length > 12 ? 'long-circuit-name' : undefined}>{race.location}</h1>
+              <span>{race.grandPrix} <b>·</b> {formatRaceDate(race.date)}</span>
+            </div>
+          </div>
           {unavailable && <div className="unavailable-panel" role="status"><span className="section-eyebrow">RACE DATA UNAVAILABLE</span><h2>We don’t have data for {year}.</h2><p>The circuit is shown using an earlier race.</p>{pastRace && <button type="button" onClick={() => { setRequestedCircuitSlug(circuitSlug(pastRace.race.circuit)); setYear(pastRace.year) }}>Show the {pastRace.year} race at this circuit</button>}</div>}
           <div className="stage-conditions">
             <div className="status-chip"><span className="status-dot" />{status}</div>
@@ -397,6 +404,7 @@ export default function App() {
             <p>{selected.team} · P{selected.position === 99 ? '–' : selected.position} · Lap {selected.lap}</p>
             <small>{isSelectedStopped ? 'Stopped car · inferred from telemetry' : hasSelectedLocation ? 'Highlighted on the circuit' : 'Location unavailable at this replay time'}</small>
           </div>}
+          <div className="stage-bottomline"><span>Drag to orbit <b>·</b> Scroll to zoom</span><span>Ghost = inferred stop · Recorded locations</span></div>
         </section>
       </main>
 
