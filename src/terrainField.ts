@@ -120,8 +120,9 @@ function waterFeatureAmount(feature: WaterFeature, x: number, z: number, extentT
   return 0
 }
 
-export function createTerrainField(track: THREE.Vector3[], environment: CircuitEnvironment, width: number, depth: number, pads: Pad[] = []): TerrainField {
-  const sparseTrack = track.filter((_, index) => index % TRACK_SAMPLE_STEP === 0)
+// The pit lane counts as track for clearance, so water, hills and trees keep off it too.
+export function createTerrainField(track: THREE.Vector3[], environment: CircuitEnvironment, width: number, depth: number, pads: Pad[] = [], pitLane: THREE.Vector3[] = []): TerrainField {
+  const sparseTrack = [...track, ...pitLane].filter((_, index) => index % TRACK_SAMPLE_STEP === 0)
   const distanceToTrack = (x: number, z: number) => {
     let nearest = Infinity
     for (const point of sparseTrack) nearest = Math.min(nearest, Math.hypot(point.x - x, point.z - z))

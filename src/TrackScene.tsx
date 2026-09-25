@@ -42,7 +42,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const { scene, overlay, cars, project, width, depth, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = buildCircuit(replay, circuit, weatherAt, quality)
+    const { scene, overlay, cars, locations, project, width, depth, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = buildCircuit(replay, circuit, weatherAt, quality)
     const camera = new THREE.OrthographicCamera(-130, 130, 100, -100, 0.1, 1000)
     let pipeline: ReturnType<typeof createSceneRenderer>
     try {
@@ -152,7 +152,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       for (const [number, car] of cars) {
         const startingPose = gridLocations.get(number)
         const gridLocation = options.showStartingGrid ? startingPose : undefined
-        const samples = replay.locations[String(number)] ?? []
+        const samples = locations[String(number)] ?? []
         const firstSample = samples[0]
         const isStarting = Boolean(!options.showStartingGrid && startingPose && firstSample && firstSample[0] <= START_TRANSITION_SECONDS && timeRef.current < START_TRANSITION_SECONDS)
         const location = options.showStartingGrid ? null : carLocation(samples, timeRef.current, isStarting)

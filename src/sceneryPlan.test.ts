@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
 import { resolveCircuitEnvironment, type CircuitEnvironment } from './circuitEnvironments'
+import { distanceToTrack, PIT_LANE_OFFSET, type PitLane } from './pitLane'
 import { LANDMARK_RADIUS, planScenery } from './sceneryPlan'
 import { GROUND_LEVEL } from './terrainField'
 
@@ -13,6 +14,17 @@ const track = Array.from({ length: 360 }, (_, index) => {
 })
 
 const planCircuit = (environment: CircuitEnvironment) => planScenery(track, environment, INNER_SIZE, INNER_SIZE, TERRAIN_SIZE, TERRAIN_SIZE)
+
+// A pit lane inside the long side of the oval, fanning out from the track at both ends.
+const pitLane: PitLane = (() => {
+  const path = Array.from({ length: 101 }, (_, step) => {
+    const index = 40 + step
+    const direction = track[index + 1].clone().sub(track[index - 1]).normalize()
+    const offset = PIT_LANE_OFFSET * Math.min(1, step / 15, (100 - step) / 15)
+    return track[index].clone().addScaledVector(new Vector3(-direction.z, 0, direction.x), offset)
+  })
+  return { centerline: path, path, side: 1 }
+})()
 
 describe('scenery plan', () => {
   it.each(['Monaco', 'Miami', 'Red Bull Ring', 'Kyalami'])('is identical every time %s is built', (circuit) => {
@@ -81,5 +93,20 @@ describe('scenery plan', () => {
   it('keeps trees and groves below the tree line on mountain circuits', () => {
     const { field, trees, groves } = planCircuit(resolveCircuitEnvironment('Spielberg'))
     for (const { x, z } of [...trees, ...groves]) expect(field.sample(x, z).mountain).toBeLessThanOrEqual(TREE_LINE)
+  })
+
+  it('puts the pit building behind the pit lane, facing it', () => {
+    const { stands } = planScenery(track, resolveCircuitEnvironment('Kyalami'), INNER_SIZE, INNER_SIZE, TERRAIN_SIZE, TERRAIN_SIZE, pitLane)
+    const [paddock] = stands
+    const laneMiddle = pitLane.path[50]
+    expect(distanceToTrack(track, paddock.center)).toBeGreaterThan(distanceToTrack(track, laneMiddle) + 3)
+    // The building's front (local -z, opposite outward) looks back across the lane toward the track.
+    expect(laneMiddle.clone().sub(paddock.center).dot(paddock.outward)).toBeLessThan(0)
+  })
+
+  it('keeps trees and grandstands off the pit lane', () => {
+    const { stands, trees } = planScenery(track, resolveCircuitEnvironment('Melbourne'), INNER_SIZE, INNER_SIZE, TERRAIN_SIZE, TERRAIN_SIZE, pitLane)
+    for (const { x, z } of trees) expect(Math.min(...pitLane.path.map((point) => Math.hypot(point.x - x, point.z - z)))).toBeGreaterThan(6)
+    for (const { center } of stands.slice(1)) expect(Math.min(...pitLane.path.map((point) => point.distanceTo(center)))).toBeGreaterThan(7)
   })
 })

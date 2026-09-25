@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import type { BuildingStyle, CircuitEnvironment, LandmarkKind, Side, TreeKind } from './circuitEnvironments'
 import { canPlaceStructure } from './circuitGeometry'
+import { distanceToTrack, PIT_LANE_OFFSET, PIT_LANE_WIDTH, type PitLane } from './pitLane'
+import { runsWhere, TRACK_WIDTH } from './trackside'
 import { createRandom, createTerrainField, GROUND_LEVEL, PAD_BLEND, SIDE_DIRECTIONS, TRACK_CLEARANCE, type Pad, type TerrainField } from './terrainField'
 
 export type StandFootprint = { center: THREE.Vector3; outward: THREE.Vector3; length: number }
@@ -30,6 +32,15 @@ const STAND_OFFSET = 10
 // Grandstand and paddock models reach about 3.3 units either side of their centre line.
 const STAND_HALF_DEPTH = 4
 const PAD_MARGIN = 1
+const PADDOCK_LENGTHS = [24, 18, 12]
+// The pit building reaches this far either side of its centre line; its garages face the lane
+// across a narrow apron.
+const PADDOCK_HALF_DEPTH = 2.6
+const PADDOCK_APRON = 0.8
+const PADDOCK_SETBACK = PIT_LANE_WIDTH / 2 + PADDOCK_APRON + PADDOCK_HALF_DEPTH
+const PADDOCK_MARGIN = 0.4
+const SEPARATED_TOLERANCE = 0.25
+const TANGENT_WINDOW = 6
 // Keeps a landmark's whole pad, including its blend, clear of the track's flat strip.
 const SITE_TRACK_GAP = TRACK_CLEARANCE + PAD_BLEND + PAD_MARGIN
 
@@ -74,9 +85,36 @@ function isDryFootprint(field: TerrainField, x: number, z: number, radius: numbe
   return footprintSamples(field, x, z, radius).every(({ water }) => water < DRY_LAND)
 }
 
-// Place stands beside actual straight sections, rejecting footprints near another section.
-export function planStands(track: THREE.Vector3[], width: number, depth: number) {
-  const stands: StandFootprint[] = []
+function isOutsideFootprint(points: THREE.Vector3[], center: THREE.Vector3, outward: THREE.Vector3, halfLength: number, halfDepth: number) {
+  const tangent = new THREE.Vector3(outward.z, 0, -outward.x)
+  return points.every((point) => {
+    const offset = point.clone().sub(center)
+    return Math.abs(offset.dot(tangent)) > halfLength || Math.abs(offset.dot(outward)) > halfDepth
+  })
+}
+
+// The pit building stands behind the middle of the lane's longest stretch at full offset, facing
+// it, in the longest length that stays clear of the lane and every section of track.
+export function planPaddock(track: THREE.Vector3[], { path, side }: PitLane): StandFootprint | null {
+  const runs = runsWhere(path.length, (index) => distanceToTrack(track, path[index]) >= PIT_LANE_OFFSET - SEPARATED_TOLERANCE, 1)
+  if (!runs.length) return null
+  const run = runs.reduce((best, candidate) => candidate.length > best.length ? candidate : best)
+  const middle = run[Math.floor(run.length / 2)]
+  const tangent = path[Math.min(middle + TANGENT_WINDOW, path.length - 1)].clone().sub(path[Math.max(middle - TANGENT_WINDOW, 0)]).normalize()
+  const outward = new THREE.Vector3(-tangent.z, 0, tangent.x).multiplyScalar(side)
+  const center = path[middle].clone().addScaledVector(outward, PADDOCK_SETBACK)
+  const length = PADDOCK_LENGTHS.find((candidate) =>
+    isOutsideFootprint(track, center, outward, candidate / 2 + TRACK_WIDTH / 2, PADDOCK_HALF_DEPTH + TRACK_WIDTH / 2 + PADDOCK_MARGIN)
+    && isOutsideFootprint(path, center, outward, candidate / 2, PADDOCK_HALF_DEPTH + PIT_LANE_WIDTH / 2 + PADDOCK_MARGIN))
+  return length ? { center, outward, length } : null
+}
+
+// Place stands beside actual straight sections, rejecting footprints near another section or the
+// pit lane. The paddock comes first: behind the pit lane when there is one, otherwise near the start.
+export function planStands(track: THREE.Vector3[], width: number, depth: number, pitLane: PitLane | null = null) {
+  const paddock = pitLane ? planPaddock(track, pitLane) : null
+  const stands: StandFootprint[] = paddock ? [paddock] : []
+  const obstacles = [...track, ...(pitLane?.path ?? [])]
   for (let index = 20; index < track.length && stands.length < MAX_STANDS; index += STAND_SPACING) {
     const point = track[index]
     const tangent = track[(index + 12) % track.length].clone().sub(track[(index - 12 + track.length) % track.length]).normalize()
@@ -85,7 +123,8 @@ export function planStands(track: THREE.Vector3[], width: number, depth: number)
     const center = point.clone().addScaledVector(outward, STAND_OFFSET)
     if (Math.abs(center.x) > width / 2 - 14 || Math.abs(center.z) > depth / 2 - 14) continue
     const length = 15 + stands.length % 2 * 7
-    if (canPlaceStructure(track, center, outward, length)) stands.push({ center, outward, length })
+    const isApart = stands.every((other) => other.center.distanceTo(center) > (other.length + length) / 2 + STAND_HALF_DEPTH)
+    if (isApart && canPlaceStructure(obstacles, center, outward, length)) stands.push({ center, outward, length })
   }
   return stands
 }
@@ -223,12 +262,13 @@ export function planGroves(field: TerrainField, environment: CircuitEnvironment,
 
 // Structures are placed first and the terrain is then flattened and dried under them,
 // so grandstands never stand in water and flat landmarks never clip into slopes.
-export function planScenery(track: THREE.Vector3[], environment: CircuitEnvironment, width: number, depth: number, terrainWidth: number, terrainDepth: number) {
-  const stands = planStands(track, width, depth)
+export function planScenery(track: THREE.Vector3[], environment: CircuitEnvironment, width: number, depth: number, terrainWidth: number, terrainDepth: number, pitLane: PitLane | null = null) {
+  const stands = planStands(track, width, depth, pitLane)
   const standPads = stands.map(standPad)
   const occupancy = createOccupancy(stands)
-  const landmarks = planLandmarks(createTerrainField(track, environment, terrainWidth, terrainDepth, standPads), environment, occupancy)
-  const field = createTerrainField(track, environment, terrainWidth, terrainDepth, [...standPads, ...landmarks.map(landmarkPad)])
+  const lanePath = pitLane?.path ?? []
+  const landmarks = planLandmarks(createTerrainField(track, environment, terrainWidth, terrainDepth, standPads, lanePath), environment, occupancy)
+  const field = createTerrainField(track, environment, terrainWidth, terrainDepth, [...standPads, ...landmarks.map(landmarkPad)], lanePath)
   return {
     field,
     stands,

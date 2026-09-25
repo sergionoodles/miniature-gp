@@ -3,6 +3,7 @@ import { createRibbonGeometry, roadSideRoom, startingGridLocations } from './cir
 import { createAdvertisingTexture, createAsphaltTextures, createGravelTexture, createKerbTexture, createVergeTexture } from './proceduralTextures'
 import { box, createLabel, createMergedMesh } from './sceneAssets'
 import { createBridgeWallGeometry, type TrackCrossing } from './trackCrossings'
+import { PIT_LANE_WIDTH } from './pitLane'
 
 export const TRACK_WIDTH = 3.2
 const EDGE_LINE_WIDTH = 0.11
@@ -43,6 +44,9 @@ const GANTRY_HEIGHT = 2.5
 const GANTRY_HALF_SPAN = 2.4
 const START_LIGHTS = 5
 const ASPHALT_TILE_REPEATS = 4
+// Barriers and kerbs give way where the pit lane runs beside the track within the barrier's reach.
+const PIT_LANE_REACH = BARRIER_OFFSET + PIT_LANE_WIDTH / 2 + 0.5
+const PIT_LANE_ALONG = 1.5
 
 export const DRY_ASPHALT = new THREE.Color(0x70777a)
 export const WET_ASPHALT = new THREE.Color(0x3c4347)
@@ -50,7 +54,7 @@ export const DRY_ASPHALT_ROUGHNESS = 0.92
 export const WET_ASPHALT_ROUGHNESS = 0.22
 const FLOODLIGHT_TINT = new THREE.Color(0xfff2dc)
 
-type Frame = { point: THREE.Vector3; across: THREE.Vector3 }
+export type Frame = { point: THREE.Vector3; across: THREE.Vector3 }
 
 // The recorded lap is slightly jittery; a sideways direction taken from the immediate neighbours
 // swings enough that strips several units out zig-zag. A wider window keeps them smooth.
@@ -68,6 +72,20 @@ function cornerOutsides(track: THREE.Vector3[], frames: Frame[]) {
     const after = track[(index + CORNER_WINDOW) % track.length].clone().sub(point).normalize()
     if (before.dot(after) > STRAIGHT_COSINE) return 0
     return after.sub(before).dot(frames[index].across) > 0 ? -1 : 1
+  })
+}
+
+// Whether the pit lane runs beside each sample on its [left, right] side.
+function pitLaneSides(frames: Frame[], pitLane: THREE.Vector3[]) {
+  return frames.map(({ point, across }): [boolean, boolean] => {
+    const sides: [boolean, boolean] = [false, false]
+    for (const lanePoint of pitLane) {
+      const offsetX = lanePoint.x - point.x
+      const offsetZ = lanePoint.z - point.z
+      const sideways = offsetX * across.x + offsetZ * across.z
+      if (Math.abs(offsetX * across.z - offsetZ * across.x) <= PIT_LANE_ALONG && Math.abs(sideways) <= PIT_LANE_REACH) sides[sideways < 0 ? 0 : 1] = true
+    }
+    return sides
   })
 }
 
@@ -100,7 +118,7 @@ export function runsWhere(length: number, test: (index: number) => boolean, mini
 
 // A strip following the track through `indices`, with a cross-section given as [offset, height]
 // pairs on one side. u runs across the profile, v along the track in texture repeats.
-function createStripGeometry(frames: Frame[], indices: number[], side: number, profile: (step: number) => [number, number][], repeatLength: number) {
+export function createStripGeometry(frames: Frame[], indices: number[], side: number, profile: (step: number) => [number, number][], repeatLength: number) {
   const positions: number[] = []
   const uvs: number[] = []
   const indexBuffer: number[] = []
@@ -163,15 +181,16 @@ function addSurfaces(scene: THREE.Scene, track: THREE.Vector3[], elevations: num
     mesh.receiveShadow = true
     scene.add(mesh)
   }
-  return { asphalt, room, surfaces: [asphalt, lines, gravel, verge] }
+  return { asphalt, lines, verge, room, surfaces: [asphalt, lines, gravel, verge] }
 }
 
-function addKerbs(scene: THREE.Scene, track: THREE.Vector3[], frames: Frame[], elevations: number[], outsides: number[], room: [number, number][]) {
+function addKerbs(scene: THREE.Scene, track: THREE.Vector3[], frames: Frame[], elevations: number[], outsides: number[], room: [number, number][], pitSides: [boolean, boolean][]) {
   const isBend = outsides.map((outside) => outside !== 0)
   const parts: THREE.BufferGeometry[] = []
   for (const side of [-1, 1]) {
     const isClear = offsetClearance(track, side, KERB_OFFSET + KERB_WIDTH / 2)
-    const runs = runsWhere(frames.length, (index) => isBend[index] && isClear[index] && !elevations[index] && room[index][side === -1 ? 0 : 1] >= KERB_ROOM, MIN_KERB_SAMPLES)
+    const sideIndex = side === -1 ? 0 : 1
+    const runs = runsWhere(frames.length, (index) => isBend[index] && isClear[index] && !elevations[index] && room[index][sideIndex] >= KERB_ROOM && !pitSides[index][sideIndex], MIN_KERB_SAMPLES)
     for (const run of runs) {
       const inner = KERB_OFFSET - KERB_WIDTH / 2
       const outer = KERB_OFFSET + KERB_WIDTH / 2
@@ -219,10 +238,11 @@ function erodeRun(run: number[]) {
   return run.slice(RUN_END_TRIM, run.length - RUN_END_TRIM)
 }
 
-function barrierRuns(track: THREE.Vector3[], elevations: number[]) {
+function barrierRuns(track: THREE.Vector3[], elevations: number[], pitSides: [boolean, boolean][]) {
   return [-1, 1].map((side) => {
     const isClear = offsetClearance(track, side, BARRIER_OFFSET)
-    return { side, runs: runsWhere(track.length, (index) => isClear[index] && !elevations[index], MIN_BARRIER_SAMPLES).map(erodeRun) }
+    const sideIndex = side === -1 ? 0 : 1
+    return { side, runs: runsWhere(track.length, (index) => isClear[index] && !elevations[index] && !pitSides[index][sideIndex], MIN_BARRIER_SAMPLES).map(erodeRun) }
   })
 }
 
@@ -314,16 +334,18 @@ export function addBridges(scene: THREE.Scene, track: THREE.Vector3[], elevation
   scene.add(walls)
 }
 
-type TracksideOptions = { vergeColor: number; isFloodlit: boolean; driverCount: number; seed: string }
+type TracksideOptions = { vergeColor: number; isFloodlit: boolean; driverCount: number; seed: string; pitLane: THREE.Vector3[] }
 
-// Everything painted on or built right beside the racing line. Returns the asphalt (for rain),
-// the surfaces floodlights brighten at night and the emissive trackside fixtures.
-export function addTrackside(scene: THREE.Scene, overlay: THREE.Scene, track: THREE.Vector3[], elevations: number[], { vergeColor, isFloodlit, driverCount, seed }: TracksideOptions) {
+// Everything painted on or built right beside the racing line. Returns the asphalt (for rain), the
+// line and verge paint the pit lane reuses, the surfaces floodlights brighten at night and the
+// emissive trackside fixtures.
+export function addTrackside(scene: THREE.Scene, overlay: THREE.Scene, track: THREE.Vector3[], elevations: number[], { vergeColor, isFloodlit, driverCount, seed, pitLane }: TracksideOptions) {
   const frames = trackFrames(track)
   const outsides = cornerOutsides(track, frames)
-  const { asphalt, room, surfaces } = addSurfaces(scene, track, elevations, outsides, vergeColor)
-  const kerbs = addKerbs(scene, track, frames, elevations, outsides, room)
-  const barriers = barrierRuns(track, elevations)
+  const pitSides = pitLaneSides(frames, pitLane)
+  const { asphalt, lines, verge, room, surfaces } = addSurfaces(scene, track, elevations, outsides, vergeColor)
+  const kerbs = addKerbs(scene, track, frames, elevations, outsides, room, pitSides)
+  const barriers = barrierRuns(track, elevations, pitSides)
   const boards = addBarriers(scene, frames, barriers, seed)
   addStartLine(scene, overlay, track, driverCount)
   const fixtures = isFloodlit ? [addFloodlights(scene, frames, barriers)] : []
@@ -333,5 +355,5 @@ export function addTrackside(scene: THREE.Scene, overlay: THREE.Scene, track: TH
     material.emissiveMap = material.map
     material.emissiveIntensity = 0
   })
-  return { asphalt, litSurfaces, fixtures }
+  return { asphalt, lines, verge, litSurfaces, fixtures }
 }

@@ -5,7 +5,7 @@ import { createRaceLighting, getRaceDaylight, getRaceLocalHour } from './raceLig
 import type { WeatherTimeline } from './raceWeather'
 import { createRain, createRainSplashes } from './rainEffect'
 import { lappedDriversAt, type Replay } from './replay'
-import { createProjection } from './circuitGeometry'
+import { createProjection, createUnprojection } from './circuitGeometry'
 import { createCarKit } from './carModel'
 import type { GraphicsQuality } from './graphicsQuality'
 import { createCarSpray } from './carSpray'
@@ -13,6 +13,8 @@ import { createGrandstand, createPaddock } from './sceneAssets'
 import { addBuildings, addGroves, addTrees, addWater, addYachts } from './sceneryMeshes'
 import { planScenery, type LandmarkPlacement, type StandFootprint } from './sceneryPlan'
 import { createGroundTexture } from './proceduralTextures'
+import { findPitLane, moveCarsOntoPitLane, pitPasses } from './pitLane'
+import { addPitLane } from './pitLaneMeshes'
 import { createCloudShadows, sceneMaterials } from './shaderPatches'
 import type { TerrainField } from './terrainField'
 import { createTrackHeightLookup, findTrackCrossings, trackElevations } from './trackCrossings'
@@ -133,7 +135,10 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
   const width = size.x + 38
   const depth = size.z + 38
   const environment = resolveCircuitEnvironment(circuit)
-  const plan = planScenery(track, environment, width, depth, width + TERRAIN_MARGIN, depth + TERRAIN_MARGIN)
+  // The pit lane is traced from the pitting cars' own telemetry, so every circuit gets one.
+  const pitLane = findPitLane(track, pitPasses(replay, project))
+  const locations = pitLane ? moveCarsOntoPitLane(replay, pitLane, track, project, createUnprojection(replay.track)) : replay.locations
+  const plan = planScenery(track, environment, width, depth, width + TERRAIN_MARGIN, depth + TERRAIN_MARGIN, pitLane)
   const scene = new THREE.Scene()
   const overlay = new THREE.Scene()
   const updateRaceLighting = createRaceLighting(scene, Math.max(width, depth) / 2 + SHADOW_MARGIN)
@@ -141,7 +146,8 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
   const updateWater = addWater(scene, plan.field, environment, isDetailed)
   const crossings = findTrackCrossings(track)
   const elevations = trackElevations(track, crossings)
-  const { asphalt, litSurfaces, fixtures } = addTrackside(scene, overlay, track, elevations, { vergeColor: environment.ground.verge, isFloodlit: Boolean(environment.isFloodlit), driverCount: replay.drivers.length, seed: environment.id })
+  const { asphalt, lines, verge, litSurfaces, fixtures } = addTrackside(scene, overlay, track, elevations, { vergeColor: environment.ground.verge, isFloodlit: Boolean(environment.isFloodlit), driverCount: replay.drivers.length, seed: environment.id, pitLane: pitLane?.path ?? [] })
+  if (pitLane) addPitLane(scene, pitLane, track, { asphalt, lines, verge })
   addBridges(scene, track, elevations, crossings)
   const teamColors = [...new Set(replay.drivers.map(({ color }) => color))]
   const nightMaterials = addScenery(scene, plan, environment, teamColors, isDetailed)
@@ -199,5 +205,5 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
     rainLights.forEach((light) => { light.visible = isLit })
     spray.update([...cars.values()], isDetailed ? currentWeather.wetness : 0, deltaSeconds)
   }
-  return { scene, overlay, cars, updateCarEffects, updateCarLivery, project, width, depth, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
+  return { scene, overlay, cars, locations, updateCarEffects, updateCarLivery, project, width, depth, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
 }

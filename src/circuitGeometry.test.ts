@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createProjection, createRibbonGeometry, interpolateStartPose, roadSideRoom, startingGridLocations } from './circuitGeometry'
+import { createProjection, createRibbonGeometry, createUnprojection, interpolateStartPose, roadSideRoom, startingGridLocations } from './circuitGeometry'
 import { Vector3 } from 'three'
 
 describe('circuit projection', () => {
@@ -14,6 +14,12 @@ describe('circuit projection', () => {
   })
   it('rejects an empty circuit', () => {
     expect(() => createProjection([])).toThrow('Circuit requires points')
+  })
+  it('maps scene positions back to telemetry coordinates', () => {
+    const points: [number, number][] = [[10, 20], [110, 220]]
+    const [x, y] = createUnprojection(points)(createProjection(points)(37, 151))
+    expect(x).toBeCloseTo(37)
+    expect(y).toBeCloseTo(151)
   })
 })
 

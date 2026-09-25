@@ -11,7 +11,7 @@ const SAME_PASS_SAMPLES = 20
 const SAME_LEVEL_HEIGHT = 0.5
 export const START_TRANSITION_SECONDS = 3
 
-export function createProjection(points: [number, number][]) {
+function projectionFrame(points: [number, number][]) {
   if (!points.length) throw new Error('Circuit requires points')
   const xs = points.map(([x]) => x)
   const ys = points.map(([, y]) => y)
@@ -19,9 +19,18 @@ export function createProjection(points: [number, number][]) {
   const maxX = Math.max(...xs)
   const minY = Math.min(...ys)
   const maxY = Math.max(...ys)
-  const scale = CIRCUIT_SPAN / Math.max(maxX - minX, maxY - minY, 1)
-  return (x: number, y: number, height = 0) =>
-    new THREE.Vector3(((minY + maxY) / 2 - y) * scale, height, ((minX + maxX) / 2 - x) * scale)
+  return { centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, scale: CIRCUIT_SPAN / Math.max(maxX - minX, maxY - minY, 1) }
+}
+
+export function createProjection(points: [number, number][]) {
+  const { centerX, centerY, scale } = projectionFrame(points)
+  return (x: number, y: number, height = 0) => new THREE.Vector3((centerY - y) * scale, height, (centerX - x) * scale)
+}
+
+// Maps a scene position back to telemetry coordinates, the inverse of createProjection.
+export function createUnprojection(points: [number, number][]) {
+  const { centerX, centerY, scale } = projectionFrame(points)
+  return (point: THREE.Vector3): [number, number] => [centerX - point.z / scale, centerY - point.x / scale]
 }
 
 export function startingGridLocations(track: THREE.Vector3[], grid: GridEntry[]) {
