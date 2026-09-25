@@ -112,6 +112,9 @@ export type FrameLook = { bloom: number; polarAngle: number }
 // Standard quality renders straight to the canvas: no shadow maps, ambient occlusion, bloom,
 // tilt-shift or high-precision buffers, at the native pixel ratio.
 const STANDARD_PIXEL_RATIO = 1
+// Photos render at twice the CSS resolution, capped so a large display stays within GPU texture limits.
+const PHOTO_PIXEL_RATIO = 2
+const MAX_PHOTO_EDGE = 4096
 
 // In high quality the race scene goes through the post chain; the overlay (labels, markers,
 // ghosts) is always drawn afterwards straight to the canvas so text stays crisp and exact in colour.
@@ -129,7 +132,9 @@ export function createSceneRenderer(scene: THREE.Scene, overlay: THREE.Scene, ca
   scene.environment = environment
   const post = isHigh ? createPostChain(renderer, scene, camera) : null
 
+  let size = { width: 1, height: 1 }
   const setSize = (width: number, height: number) => {
+    size = { width, height }
     renderer.setSize(width, height)
     post?.setSize(width, height)
   }
@@ -142,12 +147,31 @@ export function createSceneRenderer(scene: THREE.Scene, overlay: THREE.Scene, ca
     renderer.render(overlay, camera)
     renderer.autoClear = true
   }
+  // The drawing buffer is only readable until the frame is presented, so the photo frame is
+  // rendered and copied in one go, then the screen resolution is restored and redrawn.
+  const capture = (look: FrameLook) => {
+    const screenPixelRatio = renderer.getPixelRatio()
+    const pixelRatio = Math.min(PHOTO_PIXEL_RATIO, MAX_PHOTO_EDGE / Math.max(size.width, size.height))
+    renderer.setPixelRatio(pixelRatio)
+    setSize(size.width, size.height)
+    render(look)
+    const image = document.createElement('canvas')
+    image.width = renderer.domElement.width
+    image.height = renderer.domElement.height
+    const context = image.getContext('2d')
+    if (!context) throw new Error('The photo canvas could not be created.')
+    context.drawImage(renderer.domElement, 0, 0)
+    renderer.setPixelRatio(screenPixelRatio)
+    setSize(size.width, size.height)
+    render(look)
+    return { image, pixelRatio }
+  }
   const dispose = () => {
     post?.dispose()
     environment.dispose()
     renderer.dispose()
   }
-  return { renderer, canvas: renderer.domElement, setSize, render, dispose }
+  return { renderer, canvas: renderer.domElement, setSize, render, capture, dispose }
 }
 
 function createPostChain(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {

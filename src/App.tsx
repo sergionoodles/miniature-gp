@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { version } from '../package.json'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
 import { TrackScene } from './TrackScene'
+import { PhotoReview } from './PhotoReview'
+import type { RacePhotoHud, SceneCapture } from './racePhoto'
 import { createWeatherTimeline, describeWeather } from './raceWeather'
 import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, positionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
 
@@ -60,6 +62,7 @@ export default function App() {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [speed, setSpeed] = useState(DEFAULT_SPEED)
   const [notifications, setNotifications] = useState<(ReplayNotification & { expiresAt: number })[]>([])
+  const [photo, setPhoto] = useState<{ capture: SceneCapture; hud: RacePhotoHud; resumesPlayback: boolean } | null>(null)
   const timeRef = useRef(0)
   const previousNotificationTimeRef = useRef(0)
   const isPlayingRef = useRef(false)
@@ -303,6 +306,41 @@ export default function App() {
     ? replay.startingGrid.some(([driver]) => driver === selected.number)
     : carLocation(replay.locations[String(selected.number)] ?? [], time) !== null : false
 
+  // The replay stays paused while the photo is reviewed, so the scene behind it is the moment taken.
+  const takePhoto = (capture: SceneCapture) => {
+    const resumesPlayback = isPlayingRef.current
+    setPlayback(false)
+    setPhoto({
+      capture,
+      resumesPlayback,
+      hud: {
+        slug: circuitSlug(race.location),
+        location: race.location,
+        grandPrix: race.grandPrix,
+        countryCode: race.countryCode,
+        year: race.date.slice(0, 4),
+        dateLabel: formatRaceDate(race.date),
+        lap: leaderLap,
+        totalLaps: race.laps,
+        clock: clockLabel(time),
+        status,
+        weather: {
+          symbol: conditions?.symbol ?? '☀',
+          label: conditions?.label ?? 'Dry',
+          details: weather ? `Air ${weather.airTemperature.toFixed(1)}° · Track ${weather.trackTemperature.toFixed(1)}°` : null,
+        },
+        order: unavailable ? [] : order.map(({ position, code, color }) => ({ position, code, color })),
+        focus: selected ? { name: selected.name, number: selected.number, team: selected.team, position: selected.position, lap: selected.lap } : null,
+        notifications: notifications.map(({ title, detail, drivers }) => ({ title, detail, drivers })),
+      },
+    })
+  }
+
+  const closePhoto = () => {
+    if (photo?.resumesPlayback) setPlayback(true)
+    setPhoto(null)
+  }
+
   useEffect(() => {
     let step = 0
     let timeout: number
@@ -365,7 +403,7 @@ export default function App() {
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} showCars={!unavailable} />}
+          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
             <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>
@@ -423,6 +461,7 @@ export default function App() {
         </div>
         <label className="speed-picker">Speed<select aria-label="Replay speed" value={speed} onChange={(event) => changeSpeed(Number(event.target.value))}>{SPEEDS.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
       </footer>
+      {photo && <PhotoReview capture={photo.capture} hud={photo.hud} onClose={closePhoto} />}
       <footer className="app-footer">Race telemetry by <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a><span aria-hidden="true">·</span> Miniature GP <span className="app-version">v{version}</span><span aria-hidden="true">·</span> © 2026 Coding Noodles</footer>
     </div>
   )

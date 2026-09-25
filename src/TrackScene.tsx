@@ -4,11 +4,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
 import { frameCircuitCameraInPlace, interpolateStartPose, START_TRANSITION_SECONDS, startingGridLocations } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
-import { createSceneRenderer } from './sceneRenderer'
+import { createSceneRenderer, type FrameLook } from './sceneRenderer'
 import { loadGraphicsQuality, saveGraphicsQuality, type GraphicsQuality } from './graphicsQuality'
 import type { WeatherTimeline } from './raceWeather'
 import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, createSelectionMarker, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
+import type { SceneCapture } from './racePhoto'
 
 const MARKER_PULSE_SPEED = 0.005
 const MARKER_PULSE_SCALE = 0.08
@@ -28,13 +29,15 @@ type Props = {
   showStartingGrid: boolean
   onSelectDriver: (driver: number | null) => void
   onSceneReady: (ready: boolean) => void
+  onPhoto: (capture: SceneCapture) => void
   showCars?: boolean
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, showCars = true }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
+  const captureRef = useRef<() => SceneCapture | null>(() => null)
   const [view, setView] = useState<'overview' | 'top'>('overview')
   const [quality, setQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
   const [error, setError] = useState<string | null>(null)
@@ -136,6 +139,8 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     let lastDiagnostic = 0
     let previousHover: number | null = null
     let previousFrame = performance.now()
+    let lastLook: FrameLook | null = null
+    captureRef.current = () => lastLook && { ...pipeline.capture(lastLook), bounds: container.getBoundingClientRect() }
     // Standard quality draws at most 30 frames a second, halving GPU work on high refresh screens.
     const minimumFrameMs = quality === 'high' ? 0 : STANDARD_FRAME_MS
     const animate = (now: number) => {
@@ -196,7 +201,8 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       updateCarEffects(deltaSeconds)
       updateCarLivery(timeRef.current)
       controls.update()
-      pipeline.render({ ...look, polarAngle: controls.getPolarAngle() })
+      lastLook = { ...look, polarAngle: controls.getPolarAngle() }
+      pipeline.render(lastLook)
       if (!hasRendered) {
         hasRendered = true
         onSceneReady(true)
@@ -239,6 +245,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       textures.forEach((texture) => texture.dispose())
       pipeline.dispose()
       actionRef.current = () => {}
+      captureRef.current = () => null
     }
   }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, onSceneReady, quality])
 
@@ -253,11 +260,22 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     actionRef.current(next)
   }
 
+  const takePhoto = () => {
+    const capture = captureRef.current()
+    if (capture) onPhoto(capture)
+  }
+
   return <>
     <div className="track-canvas" ref={containerRef} />
     {error && <div className="scene-error" role="alert">{error}</div>}
     {selectedDriver !== null && <button className="locate-driver" type="button" disabled={showStartingGrid ? !replay.startingGrid.some(([driver]) => driver === selectedDriver) : !carLocation(replay.locations[String(selectedDriver)] ?? [], timeRef.current) || stoppedAt(stops.get(selectedDriver) ?? [], timeRef.current) !== null} onClick={() => actionRef.current('locate')}>⌖ Locate driver</button>}
     <div className="camera-toolbar" aria-label="Camera controls" role="group">
+      <div className="view-switch">
+        <button type="button" className="photo-button" aria-label="Take a photo" disabled={error !== null} title="Take a photo of the race as framed" onClick={takePhoto}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><path d="M4 7.5h3.2L9 5h6l1.8 2.5H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.6" /></svg>
+          <span>Photo</span>
+        </button>
+      </div>
       <div className="view-switch">
         <button type="button" aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>◈ <span>Orbit</span></button>
         <button type="button" aria-pressed={view === 'top'} onClick={() => changeView('top')}>⊞ <span>Top view</span></button>
