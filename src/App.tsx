@@ -46,6 +46,7 @@ export default function App() {
   const [races, setRaces] = useState(FALLBACK_RACES)
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
+  const [isOrderOpen, setIsOrderOpen] = useState(false)
   const [raceId, setRaceId] = useState('11361')
   const race = races.find((option) => option.id === raceId) ?? races[0]
   const [replay, setReplay] = useState<Replay | null>(null)
@@ -378,13 +379,14 @@ export default function App() {
       </header>
 
       <main className="workspace">
-        <aside className="order-panel">
+        <aside id="running-order-panel" className={`order-panel${isOrderOpen ? ' order-panel-open' : ''}`}>
           <div className="panel-heading">
             <div>
               <span className="section-title">Running order</span>
               <span className="section-note">{race.circuit.replace('Circuit ', '')} · {formatRaceDate(race.date)}</span>
             </div>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
+            <button className="order-close" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)}>×</button>
           </div>
           <div className="order-hint">Hover to isolate · Select to locate <span>↗</span></div>
           <div className="order-list" role="region" tabIndex={0} aria-label="Running order">
@@ -403,6 +405,8 @@ export default function App() {
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
+          <button className="order-toggle" type="button" aria-label="Open running order" aria-controls="running-order-panel" aria-expanded={isOrderOpen} onClick={() => setIsOrderOpen(true)}><span aria-hidden="true">☰</span></button>
+          {isOrderOpen && <button className="order-backdrop" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)} />}
           {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
@@ -462,7 +466,7 @@ export default function App() {
         <label className="speed-picker">Speed<select aria-label="Replay speed" value={speed} onChange={(event) => changeSpeed(Number(event.target.value))}>{SPEEDS.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
       </footer>
       {photo && <PhotoReview capture={photo.capture} hud={photo.hud} onClose={closePhoto} />}
-      <footer className="app-footer">Race telemetry by <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a><span aria-hidden="true">·</span> Miniature GP <span className="app-version">v{version}</span><span aria-hidden="true">·</span> © 2026 Coding Noodles</footer>
+      <footer className="app-footer"><span className="telemetry-credits">Race telemetry by <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a><span aria-hidden="true">·</span></span> Miniature GP <span className="app-version">v{version}</span><span aria-hidden="true">·</span> © 2026 Coding Noodles</footer>
     </div>
   )
 }
