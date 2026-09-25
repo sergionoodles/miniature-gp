@@ -28,9 +28,10 @@ type Props = {
   showStartingGrid: boolean
   onSelectDriver: (driver: number | null) => void
   onSceneReady: (ready: boolean) => void
+  showCars?: boolean
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, showCars = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
@@ -162,10 +163,10 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
         const stop = options.showStartingGrid ? null : stoppedAt(stops.get(number) ?? [], timeRef.current)
         const ghost = ghosts.get(number)
         const label = labels.get(number)
-        car.visible = Boolean(gridLocation || location && !stop)
+        car.visible = showCars && Boolean(gridLocation || location && !stop)
         if (ghost) {
           if (stop) positionGhostInPlace(ghost, project(stop[2], stop[3]), track)
-          ghost.visible = stop !== null
+          ghost.visible = showCars && stop !== null
         }
         if (label) label.visible = false
         if (!gridLocation && (!location || stop)) continue
@@ -182,7 +183,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
           car.position.y += trackHeightAt(pose.position, new THREE.Vector3(Math.sin(pose.rotation), 0, Math.cos(pose.rotation)))
           car.rotation.y = pose.rotation
         }
-        if ((activeHover ?? options.selectedDriver) === number) {
+        if (showCars && (activeHover ?? options.selectedDriver) === number) {
           marker.visible = true
           marker.position.copy(car.position).setY(car.position.y + 0.08)
           if (!isReducedMotion) marker.scale.setScalar(1 + Math.sin(now * MARKER_PULSE_SPEED) * MARKER_PULSE_SCALE)

@@ -47,6 +47,8 @@ export default function App() {
   const [raceId, setRaceId] = useState('11361')
   const race = races.find((option) => option.id === raceId) ?? races[0]
   const [replay, setReplay] = useState<Replay | null>(null)
+  const [unavailable, setUnavailable] = useState(false)
+  const [pastRace, setPastRace] = useState<{ year: number; race: RaceOption } | null>(null)
   const [sceneReady, setSceneReady] = useState(false)
   const [activeLoaderStep, setActiveLoaderStep] = useState(0)
   const [hasShownLoaderSteps, setHasShownLoaderSteps] = useState(false)
@@ -72,6 +74,8 @@ export default function App() {
     setCountdown(null)
     setTime(0)
     setReplay(null)
+    setUnavailable(false)
+    setPastRace(null)
     setSceneReady(false)
     setActiveLoaderStep(0)
     setHasShownLoaderSteps(false)
@@ -147,12 +151,33 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController()
+    setUnavailable(false)
+    setPastRace(null)
     fetch(race.url, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Replay file could not be loaded (${response.status}).`)
         return response.json() as Promise<unknown>
       })
-      .then((value) => {
+      .then(async (value) => {
+        if (typeof value === 'object' && value !== null && (value as Record<string, unknown>).invalid === true) {
+          setUnavailable(true)
+          for (const previousYear of years.filter((candidate) => candidate < year)) {
+            const catalogResponse = await fetch(`/data/${previousYear}/races-${previousYear}.json`, { signal: controller.signal })
+            if (!catalogResponse.ok) continue
+            const catalog: unknown = await catalogResponse.json()
+            if (!Array.isArray(catalog)) continue
+            const previousRace = catalog.find((entry): entry is RaceOption => isRaceOption(entry) && entry.circuit.toLowerCase() === race.circuit.toLowerCase())
+            if (!previousRace) continue
+            const replayResponse = await fetch(previousRace.url, { signal: controller.signal })
+            if (!replayResponse.ok) continue
+            const previousReplay: unknown = await replayResponse.json()
+            if (!isReplay(previousReplay)) continue
+            setReplay(previousReplay)
+            setPastRace({ year: previousYear, race: previousRace })
+            return
+          }
+          return
+        }
         if (!isReplay(value)) throw new Error('The replay file is incomplete.')
         setReplay(value)
       })
@@ -161,7 +186,7 @@ export default function App() {
         setError(cause instanceof Error ? cause.message : 'The replay file could not be loaded.')
       })
     return () => controller.abort()
-  }, [race.url])
+  }, [race.url, race.circuit, year, years])
 
   useEffect(() => {
     if (!replay) return
@@ -293,7 +318,7 @@ export default function App() {
   }, [race.id, loaderRun])
 
   return (
-    <div className={`app-shell${isRaining ? ' raining' : ''}`}>
+    <div className={`app-shell${isRaining ? ' raining' : ''}${unavailable ? ' race-unavailable' : ''}`}>
       <header className="topbar">
         <div className="identity">
           <img className="identity-mark" src="/logo.svg" alt="" />
@@ -336,11 +361,11 @@ export default function App() {
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} />}
+          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} showCars={!unavailable} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
-            <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'BUILDING YOUR RACE'}</span>
-            <h2>{error ?? `Preparing ${race.location}`}</h2>
+            <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>
+            <h2>{error ?? `${race.location} ${year}`}</h2>
             <ol className="loader-steps">
               {LOADER_STEPS.map((step, index) => <li className={index === activeLoaderStep ? 'active' : undefined} aria-current={index === activeLoaderStep ? 'step' : undefined} key={step}>{step}</li>)}
             </ol>
@@ -352,6 +377,7 @@ export default function App() {
               <span>{race.grandPrix} <b>·</b> {formatRaceDate(race.date)}</span>
             </div>
           </div>
+          {unavailable && <div className="unavailable-panel" role="status"><span className="section-eyebrow">RACE DATA UNAVAILABLE</span><h2>We don’t have data for {year}.</h2><p>The circuit is shown using an earlier race.</p>{pastRace && <button type="button" onClick={() => { setRequestedCircuitSlug(circuitSlug(pastRace.race.circuit)); setYear(pastRace.year) }}>Show the {pastRace.year} race at this circuit</button>}</div>}
           <div className="stage-conditions">
             <div className="status-chip"><span className="status-dot" />{status}</div>
             <div className="weather-chip">

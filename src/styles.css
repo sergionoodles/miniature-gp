@@ -187,3 +187,8 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .race-notice { top: 215px; }
 }
 @media (prefers-reduced-motion: reduce) { .race-toast { animation: none; } }
+.race-unavailable .order-panel, .race-unavailable .transport, .race-unavailable .stage-conditions, .race-unavailable .stage-bottomline, .race-unavailable .race-start-hud { display: none; }
+.unavailable-panel { position: absolute; z-index: 2; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100% - 36px)); padding: 30px; text-align: center; border: 1px solid var(--hud-border); border-radius: 8px; background: #111a22ed; backdrop-filter: blur(18px); box-shadow: 0 12px 40px #0008; }
+.unavailable-panel h2 { margin: 12px 0 8px; font-size: 22px; }
+.unavailable-panel p { color: var(--hud-muted); margin: 0 0 22px; }
+.unavailable-panel button { min-height: 42px; padding: 0 18px; border: 1px solid #dce4e55c; border-radius: 5px; background: #edf1f3; color: #111a22; font-weight: 700; }
