@@ -423,7 +423,7 @@ export default function App() {
         </div>
         <label className="speed-picker">Speed<select aria-label="Replay speed" value={speed} onChange={(event) => changeSpeed(Number(event.target.value))}>{SPEEDS.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
       </footer>
-      <footer className="app-footer">Race telemetry by <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a><span aria-hidden="true">·</span> Miniature GP <span className="app-version">v{version}</span></footer>
+      <footer className="app-footer">Race telemetry by <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a><span aria-hidden="true">·</span> Miniature GP <span className="app-version">v{version}</span><span aria-hidden="true">·</span> © 2026 Coding Noodles</footer>
     </div>
   )
 }
