@@ -65,6 +65,10 @@ export default function App() {
   const isPlayingRef = useRef(false)
   const speedRef = useRef(DEFAULT_SPEED)
 
+  useEffect(() => {
+    document.title = `${race.grandPrix} ${year} | Miniature GP`
+  }, [race.grandPrix, year])
+
   const selectRace = (nextRaceId: string, options = races, updateHistory = true) => {
     isPlayingRef.current = false
     timeRef.current = 0

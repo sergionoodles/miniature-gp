@@ -1,19 +1,22 @@
 # Miniature GP
 
-Miniature GP turns a Formula 1 race into a small, fixed-view 3D replay. Watch the cars move around the circuit, follow the running order, and explore the race at your own pace. The first replay covers the **2026 Italian Grand Prix at Monza**.
+Miniature GP turns Formula 1 races into 3D replays. Choose a season and Grand Prix, watch the cars move around the circuit, follow the running order, and explore each race at your own pace. The bundled library currently includes races from **2024, 2025, and 2026**.
+
+![Miniature GP race replay showing the circuit, running order, and replay controls](public/miniature-gp.png)
 
 ## What you can do
 
-- Watch 22 cars follow their recorded positions on a stylized Monza circuit.
-- Pause, resume, scrub through the race, or change playback speed from 1× to 120×.
+- Choose from the available seasons and their completed Grand Prix replays.
+- Watch each car follow its recorded positions on a stylized circuit.
+- Pause, resume, scrub through the race, or change playback speed from 1× to 100×.
 - Follow the running order, lap count, pit stops, race status, and weather.
-- See Monza's parkland, grandstands, paddock, and pit lane from a fixed isometric view.
+- Explore each circuit and its surroundings in a 3D scene; drag to orbit and scroll to zoom.
 
 ## How it works
 
-The webpage uses React and Three.js. A bundled replay file contains the timing, car locations, and events sourced from [OpenF1](https://openf1.org/). The track follows a recorded lap, aligned with the supplied track map; the surroundings are a simple 3D interpretation of the aerial reference. Playback reads the local file, so watching the race does not call the OpenF1 API.
+The webpage uses React and Three.js. Bundled replay files contain timing, car locations, and race events sourced from [OpenF1](https://openf1.org/). Each replay follows a recorded lap, with a 3D circuit and procedurally built surroundings. Playback reads local files, so watching a race does not call the OpenF1 API.
 
-The race selector reads the available seasons and their generated race catalogs. New circuits use their recorded GPS lap for the track and procedural scenery.
+The season selector reads `public/data/years.json`; each season's Grand Prix selector is populated from its generated race catalog. New circuits use their recorded GPS lap for the track and procedural scenery.
 
 ## Run locally
 
@@ -24,7 +27,7 @@ pnpm dev
 
 ## Import races
 
-From the repository root, run the importer with Python 3.12 or newer:
+From the repository root, run the importer with Python 3.12 or newer. It discovers completed races for the selected season from OpenF1:
 
 ```bash
 python scripts/import_races.py
@@ -36,8 +39,8 @@ To import another season, pass its year:
 python scripts/import_races.py --year 2025
 ```
 
-The default is the current UTC year. The script discovers completed Grand Prix races from OpenF1, downloads missing replays into `public/data/<year>/`, updates `public/data/<year>/races-<year>.json`, and lists seasons with races in `public/data/years.json`. Rerunning it skips races already imported; future, cancelled, and unfinished races wait for a later run. OpenF1 temporarily restricts free API access around live sessions, starting 30 minutes before and ending 30 minutes after; the script waits and retries every five minutes when that happens. No Python packages need to be installed.
+The default is the current UTC year. The script downloads missing replays into `public/data/<year>/`, updates that season's `races-<year>.json`, and lists seasons with replays in `public/data/years.json`. Rerunning it skips races already imported; future, cancelled, and unfinished races wait for a later run. OpenF1 temporarily restricts free API access around live sessions, starting 30 minutes before and ending 30 minutes after; the script waits and retries every five minutes when that happens. No Python packages need to be installed.
 
-If you add replay JSON files directly to a year folder, run `python scripts/import_races.py --catalog-only` to refresh all season catalogs without downloading races. `pnpm dev` and `pnpm build` run this refresh before starting, and the import Action refreshes catalogs before committing. Restart the dev server after adding files; the refreshed dropdown will include them.
+If you add replay JSON files directly to a year folder, run `python scripts/import_races.py --catalog-only` to refresh all season catalogs without downloading races. `pnpm dev` and `pnpm build` run this refresh before starting, and the import Action refreshes catalogs before committing. Restart the dev server after adding files; the season and Grand Prix selectors will include them.
 
 The [Import current season races](.github/workflows/import-races.yml) GitHub Action runs daily at 04:17 UTC. You can also start it from **Actions → Import current season races → Run workflow** to backfill available races immediately. The Action commits generated replay and catalog files to the branch it runs on.
