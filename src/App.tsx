@@ -23,6 +23,8 @@ const formatRaceDate = (date: string) => {
 const SPEEDS = [1, 2, 5, 10, 25, 50, 100]
 const DEFAULT_SPEED = 10
 const NOTIFICATION_DURATION = 6000
+const LOADER_STEP_DURATION = 500
+const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
 const routeFromPath = (pathname: string) => {
   const match = pathname.match(/^\/(\d{4})\/([^/]+)\/?$/)
   return match ? { year: Number(match[1]), circuitSlug: match[2] } : null
@@ -45,6 +47,10 @@ export default function App() {
   const [raceId, setRaceId] = useState('11361')
   const race = races.find((option) => option.id === raceId) ?? races[0]
   const [replay, setReplay] = useState<Replay | null>(null)
+  const [sceneReady, setSceneReady] = useState(false)
+  const [activeLoaderStep, setActiveLoaderStep] = useState(0)
+  const [hasShownLoaderSteps, setHasShownLoaderSteps] = useState(false)
+  const [loaderRun, setLoaderRun] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [time, setTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -66,6 +72,10 @@ export default function App() {
     setCountdown(null)
     setTime(0)
     setReplay(null)
+    setSceneReady(false)
+    setActiveLoaderStep(0)
+    setHasShownLoaderSteps(false)
+    setLoaderRun((current) => current + 1)
     setError(null)
     setSelectedDriver(null)
     setHoveredDriver(null)
@@ -264,6 +274,24 @@ export default function App() {
     ? replay.startingGrid.some(([driver]) => driver === selected.number)
     : carLocation(replay.locations[String(selected.number)] ?? [], time) !== null : false
 
+  useEffect(() => {
+    let step = 0
+    let timeout: number
+    const advanceLoader = () => {
+      timeout = window.setTimeout(() => {
+        if (step === LOADER_STEPS.length - 1) {
+          setHasShownLoaderSteps(true)
+          return
+        }
+        step += 1
+        setActiveLoaderStep(step)
+        advanceLoader()
+      }, LOADER_STEP_DURATION)
+    }
+    advanceLoader()
+    return () => window.clearTimeout(timeout)
+  }, [race.id, loaderRun])
+
   return (
     <div className={`app-shell${isRaining ? ' raining' : ''}`}>
       <header className="topbar">
@@ -308,7 +336,15 @@ export default function App() {
         </aside>
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay && weatherAt ? <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} /> : <div className="stage-placeholder">{error ?? `Preparing ${race.circuit}…`}</div>}
+          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} />}
+          {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
+            <div className="loader-wheel" aria-hidden="true"><span /></div>
+            <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'BUILDING YOUR RACE'}</span>
+            <h2>{error ?? `Preparing ${race.location}`}</h2>
+            <ol className="loader-steps">
+              {LOADER_STEPS.map((step, index) => <li className={index === activeLoaderStep ? 'active' : undefined} aria-current={index === activeLoaderStep ? 'step' : undefined} key={step}>{step}</li>)}
+            </ol>
+          </div>}
           <div className="stage-topline">
             <div className="stage-title">
               <span className="stage-kicker">{race.countryCode} / {race.date.slice(0, 4)}</span>

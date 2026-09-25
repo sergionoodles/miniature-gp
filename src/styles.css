@@ -51,6 +51,16 @@ select { border: 1px solid var(--hud-border); border-radius: 5px; background: va
 .track-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .stage-placeholder, .scene-error { position: absolute; inset: 0; display: grid; place-content: center; padding: 40px; text-align: center; font-size: 16px; line-height: 1.6; }
 .scene-error { background: #09151f; z-index: 1; }
+.race-loader { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px 24px; text-align: center; background: radial-gradient(ellipse at 50% 45%, #172834 0, #0b1821 48%, #071018 100%); }
+.loader-wheel { position: relative; width: 76px; height: 76px; margin-bottom: 23px; border: 12px solid #12191d; border-radius: 50%; background: repeating-conic-gradient(#ced7d9 0deg 13deg, #263740 13deg 72deg); box-shadow: inset 0 0 0 3px #71838b, 0 0 0 2px #71838b, 0 10px 24px #0008; animation: loader-spin 1.6s linear infinite; }
+.loader-wheel span { position: absolute; inset: 17px; border-radius: 50%; background: #e10600; box-shadow: 0 0 0 3px #dce4e5, 0 0 12px #e1060099; }
+.loader-eyebrow { color: #9fb4be; font: 600 9px/1.4 monospace; letter-spacing: 2.2px; }
+.race-loader h2 { margin: 9px 0 23px; font-size: clamp(24px, 3vw, 34px); font-weight: 350; letter-spacing: 1.3px; text-transform: uppercase; }
+.loader-steps { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; color: #81939c; font-size: 11px; }
+.loader-steps li { opacity: .45; transition: color .12s, opacity .12s; }
+.loader-steps li.active { color: #f2f5f6; font-weight: 700; opacity: 1; text-shadow: 0 0 14px #bddfec55; }
+@keyframes loader-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .loader-wheel { animation: none; } }
 .stage-topline { position: absolute; top: 18px; left: 318px; pointer-events: none; }
 .stage-title { display: grid; gap: 9px; padding: 12px 14px; background: var(--hud-background); border: 1px solid var(--hud-border); border-radius: 5px; backdrop-filter: blur(12px); }
 .stage-kicker { font-family: monospace; font-size: 9px; letter-spacing: 1.5px; display: flex; align-items: center; gap: 10px; }

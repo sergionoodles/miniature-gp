@@ -27,9 +27,10 @@ type Props = {
   selectedDriver: number | null
   showStartingGrid: boolean
   onSelectDriver: (driver: number | null) => void
+  onSceneReady: (ready: boolean) => void
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
@@ -49,6 +50,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       pipeline = createSceneRenderer(scene, overlay, camera, quality)
     } catch {
       setError('The 3D view needs WebGL. Try a browser with hardware acceleration enabled. Race timing and playback are still available.')
+      onSceneReady(true)
       return
     }
     const { renderer } = pipeline
@@ -129,6 +131,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     canvas.addEventListener('pointerdown', pointerDown)
     canvas.addEventListener('pointerup', pointerUp)
     let frame = 0
+    let hasRendered = false
     let lastDiagnostic = 0
     let previousHover: number | null = null
     let previousFrame = performance.now()
@@ -193,6 +196,10 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       updateCarLivery(timeRef.current)
       controls.update()
       pipeline.render({ ...look, polarAngle: controls.getPolarAngle() })
+      if (!hasRendered) {
+        hasRendered = true
+        onSceneReady(true)
+      }
       if (import.meta.env.DEV && now - lastDiagnostic > 1000) {
         container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom, polarAngle: controls.getPolarAngle(), isolated: activeHover, ghosts: [...ghosts].filter(([, ghost]) => ghost.visible).map(([number]) => number) })
         lastDiagnostic = now
@@ -232,7 +239,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       pipeline.dispose()
       actionRef.current = () => {}
     }
-  }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, quality])
+  }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, onSceneReady, quality])
 
   const toggleQuality = () => {
     const next = quality === 'high' ? 'standard' : 'high'
