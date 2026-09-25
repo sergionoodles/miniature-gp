@@ -161,7 +161,7 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .race-start-hud { left: 50%; }
   .stage-topline { display: none; }
   .stage-conditions { top: 8px; right: 8px; left: auto; transform: none; max-width: 100%; }
-  .notification-stack { top: 68px; right: 14px; width: min(210px, calc(100% - 28px)); }
+  .notification-stack { display: none; }
   .camera-toolbar { bottom: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; flex-wrap: nowrap; gap: 4px; }
   .camera-toolbar .view-switch:has(.photo-button) { display: none; }
   .camera-toolbar button { min-width: 38px; min-height: 44px; }
