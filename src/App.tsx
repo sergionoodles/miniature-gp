@@ -3,6 +3,9 @@ import { version } from '../package.json'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
 import { TrackScene } from './TrackScene'
 import { PhotoReview } from './PhotoReview'
+import { RaceResults } from './RaceResults'
+import { raceResults } from './raceResults'
+import { nextRaceAfter, nextSeason } from './nextRace'
 import type { RacePhotoHud, SceneCapture } from './racePhoto'
 import { createWeatherTimeline, describeWeather } from './raceWeather'
 import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, positionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
@@ -63,6 +66,8 @@ export default function App() {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [speed, setSpeed] = useState(DEFAULT_SPEED)
   const [notifications, setNotifications] = useState<(ReplayNotification & { expiresAt: number })[]>([])
+  const [isResultsOpen, setIsResultsOpen] = useState(false)
+  const [followingSeasonRace, setFollowingSeasonRace] = useState<{ year: number; race: RaceOption } | null>(null)
   const [photo, setPhoto] = useState<{ capture: SceneCapture; hud: RacePhotoHud; resumesPlayback: boolean } | null>(null)
   const timeRef = useRef(0)
   const previousNotificationTimeRef = useRef(0)
@@ -92,6 +97,7 @@ export default function App() {
     setSelectedDriver(null)
     setHoveredDriver(null)
     setNotifications([])
+    setIsResultsOpen(false)
     setRaceId(nextRaceId)
     const nextRace = options.find((option) => option.id === nextRaceId)
     if (nextRace && updateHistory) window.history.pushState(null, '', racePath(year, nextRace))
@@ -207,6 +213,7 @@ export default function App() {
         if (timeRef.current === replay.duration) {
           isPlayingRef.current = false
           setIsPlaying(false)
+          setIsResultsOpen(true)
         }
       }
       previous = now
@@ -274,7 +281,10 @@ export default function App() {
     previousNotificationTimeRef.current = nextTime
     setTime(nextTime)
     setNotifications([])
-    if (replay && nextTime >= replay.duration) setPlayback(false)
+    if (replay && nextTime >= replay.duration) {
+      setPlayback(false)
+      setIsResultsOpen(true)
+    }
   }
 
   const changeSpeed = (nextSpeed: number) => {
@@ -294,6 +304,7 @@ export default function App() {
       .sort((first, second) => first.position - second.position)
   }, [replay, time, isPlaying])
 
+  const results = useMemo(() => replay ? raceResults(replay) : [], [replay])
   const stops = useMemo(() => replay ? detectStoppedCars(replay) : new Map<number, StoppedInterval[]>(), [replay])
   const weatherAt = useMemo(() => replay ? createWeatherTimeline(replay) : null, [replay])
   const weather = weatherAt?.(time) ?? null
@@ -335,6 +346,42 @@ export default function App() {
         notifications: notifications.map(({ title, detail, drivers }) => ({ title, detail, drivers })),
       },
     })
+  }
+
+  const seasonNextRace = nextRaceAfter(races, race)
+  const followingSeason = nextSeason(years, year)
+  const nextRace = seasonNextRace ? { year, race: seasonNextRace } : followingSeasonRace?.year === followingSeason ? followingSeasonRace : null
+
+  // The last race of a season continues into the next one, whose catalog isn't loaded yet.
+  useEffect(() => {
+    if (!isResultsOpen || seasonNextRace || followingSeason === null) return
+    const controller = new AbortController()
+    fetch(`/data/${followingSeason}/races-${followingSeason}.json`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Race catalog could not be loaded (${response.status}).`)
+        return response.json() as Promise<unknown>
+      })
+      .then((value) => {
+        if (!Array.isArray(value)) throw new Error('Race catalog is invalid.')
+        const firstRace = nextRaceAfter(value.filter(isRaceOption), race)
+        setFollowingSeasonRace(firstRace && { year: followingSeason, race: firstRace })
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === 'AbortError') return
+        console.error('The next season could not be loaded:', cause)
+      })
+    return () => controller.abort()
+  }, [isResultsOpen, seasonNextRace, followingSeason, race])
+
+  const goToNextRace = () => {
+    if (!nextRace) return
+    if (nextRace.year === year) {
+      selectRace(nextRace.race.id)
+      return
+    }
+    setIsResultsOpen(false)
+    setRequestedCircuitSlug(circuitSlug(nextRace.race.circuit))
+    setYear(nextRace.year)
   }
 
   const closePhoto = () => {
@@ -407,7 +454,7 @@ export default function App() {
         <section className="race-stage" aria-label="Race simulation">
           <button className="order-toggle" type="button" aria-label="Open running order" aria-controls="running-order-panel" aria-expanded={isOrderOpen} onClick={() => setIsOrderOpen(true)}><span aria-hidden="true">☰</span></button>
           {isOrderOpen && <button className="order-backdrop" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)} />}
-          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} />}
+          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
             <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>
@@ -444,6 +491,9 @@ export default function App() {
           {replay && (!hasStarted || countdown !== null) && <div className="race-start-hud">
             {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start race</button> : <div className="race-start-countdown" role="status" aria-live="polite"><span>RACE START</span><strong>{countdown}</strong><div className={`start-lights step-${4 - countdown}`} aria-hidden="true"><i /><i /><i /></div></div>}
           </div>}
+          {replay && !unavailable && !isResultsOpen && time >= replay.duration && <div className="race-start-hud">
+            <button className="race-start-button" type="button" onClick={() => setIsResultsOpen(true)}><span className="results-button-flag" aria-hidden="true" /> Race results</button>
+          </div>}
           {selected && <div className="selection-card">
             <div><span className="section-eyebrow">DRIVER IN FOCUS</span><button type="button" aria-label="Clear driver selection" onClick={() => setSelectedDriver(null)}>×</button></div>
             <strong>{selected.name} <span>#{selected.number}</span></strong>
@@ -465,6 +515,7 @@ export default function App() {
         </div>
         <label className="speed-picker">Speed<select aria-label="Replay speed" value={speed} onChange={(event) => changeSpeed(Number(event.target.value))}>{SPEEDS.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
       </footer>
+      {isResultsOpen && !unavailable && results.length > 0 && <RaceResults results={results} grandPrix={race.grandPrix} location={race.location} year={race.date.slice(0, 4)} nextRaceLocation={nextRace?.race.location ?? null} onNextRace={goToNextRace} onClose={() => setIsResultsOpen(false)} />}
       {photo && <PhotoReview capture={photo.capture} hud={photo.hud} onClose={closePhoto} />}
       <footer className="app-footer"><span className="telemetry-credits">Race telemetry by <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a><span aria-hidden="true">·</span></span> Miniature GP <span className="app-version">v{version}</span><span aria-hidden="true">·</span> © 2026 Coding Noodles</footer>
     </div>

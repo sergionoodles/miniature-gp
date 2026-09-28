@@ -75,7 +75,7 @@ const LensShader = {
 
 // A soft outdoor sky for image-based lighting: glossy paint, wet asphalt and water reflect a
 // bright horizon instead of the black void a scene without an environment gives them.
-function createSkyEnvironment(renderer: THREE.WebGLRenderer) {
+export function createSkyEnvironment(renderer: THREE.WebGLRenderer) {
   const generator = new THREE.PMREMGenerator(renderer)
   const sky = new THREE.Scene()
   const geometry = new THREE.SphereGeometry(10, 48, 24)

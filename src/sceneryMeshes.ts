@@ -168,10 +168,13 @@ function softDiscTexture() {
   return new THREE.CanvasTexture(canvas)
 }
 
+const PHYSICALLY_BASED_PARAMETERS = new Set(['roughness', 'metalness'])
+
 // Foliage covers much of the screen, so standard quality shades it with the cheaper Lambert model.
-function foliageMaterial(isDetailed: boolean, parameters: THREE.MeshStandardMaterialParameters) {
-  const { roughness, metalness, ...shared } = parameters
-  return isDetailed ? new THREE.MeshStandardMaterial({ ...shared, roughness, metalness }) : new THREE.MeshLambertMaterial(shared as THREE.MeshLambertMaterialParameters)
+export function foliageMaterial(isDetailed: boolean, parameters: THREE.MeshStandardMaterialParameters) {
+  if (isDetailed) return new THREE.MeshStandardMaterial(parameters)
+  const shared = Object.fromEntries(Object.entries(parameters).filter(([key]) => !PHYSICALLY_BASED_PARAMETERS.has(key)))
+  return new THREE.MeshLambertMaterial(shared as THREE.MeshLambertMaterialParameters)
 }
 
 export function addTrees(scene: THREE.Scene, trees: TreePlacement[], isDetailed: boolean) {

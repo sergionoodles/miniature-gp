@@ -5,6 +5,7 @@ import { carLocation, type Replay } from './replay'
 import { frameCircuitCameraInPlace, interpolateStartPose, START_TRANSITION_SECONDS, startingGridLocations } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
 import { createSceneRenderer, type FrameLook } from './sceneRenderer'
+import { orbitCameraInPlace } from './finishOrbit'
 import { loadGraphicsQuality, saveGraphicsQuality, type GraphicsQuality } from './graphicsQuality'
 import type { WeatherTimeline } from './raceWeather'
 import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, createSelectionMarker, positionGhostInPlace } from './driverVisuals'
@@ -16,6 +17,8 @@ const MARKER_PULSE_SCALE = 0.08
 const LABEL_LIFT = 1.4
 // Slightly under 1000 / 30, so a 60 Hz display reliably draws every second refresh.
 const STANDARD_FRAME_MS = 30
+// Matches the CSS breakpoint where the results sheet covers the whole screen.
+const COMPACT_LAYOUT_WIDTH = 760
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
 type Props = {
@@ -31,18 +34,19 @@ type Props = {
   onSceneReady: (ready: boolean) => void
   onPhoto: (capture: SceneCapture) => void
   showCars?: boolean
+  isOrbiting?: boolean
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid })
+  const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid, isOrbiting })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
   const captureRef = useRef<() => SceneCapture | null>(() => null)
   const [view, setView] = useState<'overview' | 'top'>('overview')
   const [quality, setQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, showStartingGrid } }, [selectedDriver, hoveredDriver, showStartingGrid])
+  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, showStartingGrid, isOrbiting } }, [selectedDriver, hoveredDriver, showStartingGrid, isOrbiting])
 
   useEffect(() => {
     const container = containerRef.current
@@ -108,7 +112,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     const resize = () => {
       const { width: viewportWidth, height: viewportHeight } = container.getBoundingClientRect()
       if (!viewportWidth || !viewportHeight) return
-      const sidebar = window.innerWidth > 760 ? 286 : 0
+      const sidebar = window.innerWidth > COMPACT_LAYOUT_WIDTH ? 286 : 0
       frameCircuitCameraInPlace(camera, viewportWidth, viewportHeight, width, depth, sidebar)
       pipeline.setSize(viewportWidth, viewportHeight)
     }
@@ -140,6 +144,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     let previousHover: number | null = null
     let previousFrame = performance.now()
     let lastLook: FrameLook | null = null
+    let orbitSeconds = 0
     captureRef.current = () => lastLook && { ...pipeline.capture(lastLook), bounds: container.getBoundingClientRect() }
     // Standard quality draws at most 30 frames a second, halving GPU work on high refresh screens.
     const minimumFrameMs = quality === 'high' ? 0 : STANDARD_FRAME_MS
@@ -200,6 +205,9 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       }
       updateCarEffects(deltaSeconds)
       updateCarLivery(timeRef.current)
+      const isOrbitVisible = options.isOrbiting && !isReducedMotion && window.innerWidth > COMPACT_LAYOUT_WIDTH
+      orbitSeconds = isOrbitVisible ? orbitSeconds + deltaSeconds : 0
+      if (isOrbitVisible) orbitCameraInPlace(camera, controls.target, deltaSeconds, orbitSeconds)
       controls.update()
       lastLook = { ...look, polarAngle: controls.getPolarAngle() }
       pipeline.render(lastLook)
