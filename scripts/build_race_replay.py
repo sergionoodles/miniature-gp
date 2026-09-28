@@ -142,7 +142,7 @@ def select_track(laps, session_key, preferred=None):
             if error.code != 404:
                 raise
             continue
-        dated_rows = [(datetime.fromisoformat(row["date"]), row) for row in rows]
+        dated_rows = [(datetime.fromisoformat(row["date"]), row) for row in rows if row.get("date")]
         dated_rows.sort(key=lambda item: item[0])
         for lap in driver_laps:
             track_start = datetime.fromisoformat(lap["date_start"])

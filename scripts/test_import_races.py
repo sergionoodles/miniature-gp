@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from urllib.error import HTTPError
@@ -213,8 +213,11 @@ class TrackSelectionTest(unittest.TestCase):
         laps = [{"driver_number": number, "lap_number": number + 9,
                  "date_start": "2026-09-20T16:30:00+00:00", "lap_duration": 90,
                  "is_pit_out_lap": False} for number in (1, 2)]
-        circle = [{"x": round(100 * math.cos(index * 2 * math.pi / 120)),
+        lap_start = datetime.fromisoformat(laps[0]["date_start"])
+        circle = [{"date": (lap_start + timedelta(seconds=0.001 + index * 0.75)).isoformat(),
+                   "x": round(100 * math.cos(index * 2 * math.pi / 120)),
                    "y": round(100 * math.sin(index * 2 * math.pi / 120))} for index in range(120)]
+        circle.append({"x": 0, "y": 0})
 
         def fetch_stub(endpoint, **filters):
             return [] if filters["driver_number"] == 1 else circle
