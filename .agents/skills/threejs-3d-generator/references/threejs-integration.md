@@ -8,4 +8,4 @@ For animated assets check clip names/durations, bound skeleton, transitions, def
 
 When implementation is requested, use the project's existing loader and animation ownership. Recommend lower geometry/texture budgets, simpler materials, or LOD based on measured costs rather than automatic regeneration. Inspect after integration at gameplay camera distance on supported devices.
 
-Report actual paths, known generation settings/task IDs if applicable, intake findings, observed runtime behavior, available renderer measurements, and untested conditions. No provider account is needed for these checks.
+Use the reporting checklist in [SKILL.md](../SKILL.md#report). No provider account is needed for these checks.

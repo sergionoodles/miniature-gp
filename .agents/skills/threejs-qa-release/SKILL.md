@@ -3,15 +3,17 @@ name: threejs-qa-release
 description: "Review and verify Three.js gameplay, UI, motion, devices, performance, and production readiness with manual checks or existing project tooling."
 ---
 
-# Three.js Qa Release
+# Three.js QA Release
 
 Assess the game as a player experiences it. Manual checks are valid; no inspector, bot, harness, or new test code is required.
 
 ## QA pass
 
-Choose checks for the changed behavior and supported devices:
+Choose checks for the changed behavior and supported devices. Reuse valid evidence from the same code/asset revision; the lead owns one consolidated pass. Repeat only after relevant changes, failures, or unresolved concerns. Desktop-only work does not require mobile coverage.
 
-1. Inspect an available playable build and console/network errors using existing browser tools. Otherwise review supplied artifacts and identify runtime coverage gaps.
+Follow the project's browser-verification rules. Run required typecheck, lint, and relevant tests before the final browser check; ask before production builds or dependency changes. For substantial UI work, start the app and delegate one scoped pass to the browser verifier with the URL, exact steps, and expected results. Allow at most two fix-and-recheck rounds. Skip browser automation for small cosmetic changes unless requested, and use a manual handoff when visual judgment or costly setup requires it.
+
+1. Have the verifier inspect an available playable build and console/network errors, when browser verification is in scope. Otherwise review supplied artifacts and identify runtime coverage gaps.
 2. Confirm visible canvas content and actual input response. Exercise progression, pressure, fail/retry, and relevant changed states.
 3. Inspect active-play views for HUD fit, overlap, safe areas, controls, resize, and orientation where relevant.
 4. For audio changes listen for trigger timing, unlock, loop seams, cleanup, mute, and volume.
@@ -32,6 +34,8 @@ Review asset paths/base URL, debug visibility, browser support, bundle/assets, a
 ## Report
 
 Give observed results, unresolved defects, tested states/viewports, controls, captures, measurements if available, and checks not performed. Files or stills cannot prove playability.
+
+Keep tool output compact: one result line per state/viewport with pass/fail, error counts, relevant measurements, and artifact paths. Open detailed reports only to resolve failures or uncertainty. Use the director's [evidence record](../threejs-game-director/references/evidence-manifest.md) for capture efficiency and freshness.
 
 ## Use boundaries
 

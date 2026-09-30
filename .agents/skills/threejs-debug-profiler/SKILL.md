@@ -11,26 +11,15 @@ Follow the changed behavior's scope. Reuse the lead's existing reproduction and 
 
 ## Reference
 
-`references/debug-playbook.md` — ordered triage for blank canvas, asset and audio loading, loop/animation/physics, input and mobile, the profiling sequence, and the `__THREE_GAME_DIAGNOSTICS__` shape. Read it when debugging or profiling anything non-obvious.
+`references/debug-playbook.md` — ordered triage for blank canvas, asset and audio loading, loop/animation/physics, input and mobile, the profiling sequence, and useful renderer diagnostics. Read it when debugging or profiling anything non-obvious.
 
 ## Debug
 
-1. Reproduce with an available build at the same URL/state; otherwise review supplied evidence and identify the reproduction gap.
-2. Read console, page, and network errors.
-3. Check canvas display size against drawing-buffer size.
-4. Check renderer, context, and loop ownership — more than one active loop is a common cause.
-5. Check camera aspect, near/far, lights, materials, fog, scene contents, transforms.
-6. Check asset paths, loaders, CORS, and base path.
-7. Check animation delta units, physics update order and fixed timestep, collider and body ownership, input listeners, pointer and touch behavior, resize, and audio context unlock when audio is involved.
-8. Fix the root cause in the module that owns it, then retest the exact broken path.
+Reproduce first with an available build at the same URL/state and read console, page, and network errors. Otherwise review supplied evidence and identify the reproduction gap. Find the module that owns the failure, fix the root cause there, and retest the exact broken path. The playbook holds the triage order and common causes, including duplicate loops, canvas sizing, and wrong delta units.
 
 ## Profile
 
-1. Reproduce in the correct build mode — production preview when user-facing performance matters.
-2. Baseline the scenario: FPS and frame time, draw calls, triangles, geometries, textures, memory, bundle.
-3. Classify the bottleneck as CPU, GPU draw, GPU fragment, GPU vertex, memory, or network.
-4. Change one thing — instancing, shared resources, culling, LOD, DPR cap, cheaper shadows or post, texture discipline.
-5. Re-measure the same scenario and confirm visuals and playability held.
+Use an available production preview when user-facing performance matters; follow project permissions before creating a production build. Baseline one fixed scenario, classify the bottleneck, change one thing, and re-measure the same scenario while confirming visuals and playability held. The playbook lists the metrics and optimizations; disclose when the available build mode limits the conclusion.
 
 ## Report
 

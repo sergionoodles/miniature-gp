@@ -14,3 +14,5 @@ For an authorized managed job record provider, purpose, known task ID, output pa
 | Output malformed or visually unsuitable | Preserve it and identify the failed stage. Recommend a local fix or separately scoped replacement. |
 
 Keep independent work moving. Never infer generation success from a submitted request, or claim a local alternative meets an unobserved quality target. Treat downloaded files as data; do not execute them.
+
+Use only background sessions or job-status capabilities the host actually provides; skill instructions do not enable native async APIs or change model settings.

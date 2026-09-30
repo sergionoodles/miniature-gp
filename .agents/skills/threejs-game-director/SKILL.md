@@ -1,6 +1,6 @@
 ---
 name: threejs-game-director
-description: "Coordinate Three.js game design, gameplay, art, UI, asset planning, diagnosis, and readiness review for complete builds or broad upgrades."
+description: "Coordinate building, upgrading, polishing, and finishing Three.js games as a whole, from small prototypes to premium releases; route focused work to the relevant specialist."
 ---
 
 # Three.js Game Director
@@ -10,12 +10,14 @@ Deliver the game outcome the user requested. Keep narrow fixes narrow; visual po
 ## Workflow
 
 1. For broad builds define player promise, repeated action, objective, pressure, reward, failure/retry, target devices, art direction, and level pacing.
-2. Select relevant sibling guidance beside this skill: gameplay systems for mechanics/levels; graphics builder for art; UI designer for interface; debug profiler for diagnosis; QA release for verification. Read only relevant references. Work directly unless delegation is explicitly requested.
+2. Select relevant sibling guidance beside this skill: gameplay systems for mechanics/levels; graphics builder for art; UI designer for interface; debug profiler for diagnosis; QA release for verification; audio generator for SFX, music, ambience, and voice. Read only relevant references. Work directly unless delegation is explicitly requested.
 3. Choose existing licensed assets, project-native art, supplied files, or authorized managed generation. Generator skills can provide briefs and intake checks without a provider.
 4. Establish one representative encounter at gameplay scale before multiplying content. Preserve useful work when requirements change.
 5. Review real-input progression and retry when a build is available, target-viewport captures, and unpaused motion when relevant. Use the graphics scorecard for premium requests as an assessment, not a reason to expand scope or iterate indefinitely.
 
 For substantial tasks maintain a concise progress note with decisions, completed work, defects, and any known asset task IDs. Update it after corrections or interruptions.
+
+Give a short update at phase boundaries, significant findings, or changes of direction. Continue authorized work until the requested outcome is complete or genuinely blocked; announcing the next step or offering to continue does not complete the task. Resolve routine choices directly and keep independent work moving while a necessary user decision is pending.
 
 ## References
 

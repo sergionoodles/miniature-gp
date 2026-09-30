@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { version } from '../package.json'
+import { AppFooter } from './AppFooter'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
 import { TrackScene } from './TrackScene'
 import { PhotoReview } from './PhotoReview'
@@ -517,7 +517,7 @@ export default function App() {
       </footer>
       {isResultsOpen && !unavailable && results.length > 0 && <RaceResults results={results} grandPrix={race.grandPrix} location={race.location} year={race.date.slice(0, 4)} nextRaceLocation={nextRace?.race.location ?? null} onNextRace={goToNextRace} onClose={() => setIsResultsOpen(false)} />}
       {photo && <PhotoReview capture={photo.capture} hud={photo.hud} onClose={closePhoto} />}
-      <footer className="app-footer"><span className="telemetry-credits">Race telemetry by <a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1</a><span aria-hidden="true">·</span></span> Miniature GP <span className="app-version">v{version}</span><span aria-hidden="true">·</span> © 2026 Coding Noodles</footer>
+      <AppFooter showTelemetry />
     </div>
   )
 }

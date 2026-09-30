@@ -23,7 +23,7 @@ Prepare an asset brief and assess outputs without an API client or provider acco
 
 ## Report
 
-Give brief, real source/output paths, known task IDs/settings when applicable, observations, and pending work. Download success does not prove good rigging or motion.
+Give brief, real source/output paths, known task IDs/settings when applicable, intake findings, and pending work. For integrated assets include available renderer diagnostics before/after import, active-play screenshots, and observed motion; disclose missing evidence. Download success does not prove good rigging or motion.
 
 ## Use boundaries
 

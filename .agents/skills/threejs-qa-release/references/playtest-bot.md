@@ -10,4 +10,6 @@ For fairness compare cautious and reckless approaches, noting telegraph visibili
 
 If existing automation is already authorized, its reports can supplement observations. No templates, diagnostics globals, or new tests are required. Do not assume a headless browser uses a real GPU; identify hardware/software rendering before drawing performance conclusions. Desktop emulation is not a phone measurement.
 
+For existing Playwright WebGL suites, prefer serial execution (`workers: 1`) to avoid GPU contention and timing drift. The full Chromium channel (`channel: 'chromium'`) can help avoid a software-rendering fallback, but verify the reported renderer; selecting a channel alone does not prove GPU acceleration. Software-rendered runs can establish functional and pixel checks, but cannot substantiate target-device FPS claims. Reuse a running project server only after confirming it serves the intended app and revision.
+
 Report starting state, controls, duration, progression/failure/retry, errors, and limitations. Do not claim exact numeric metrics without recorded measurements.

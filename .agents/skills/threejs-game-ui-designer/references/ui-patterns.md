@@ -40,6 +40,8 @@ Stable dimensions from CSS variables, `clamp`, grid tracks, fixed icon slots, an
 
 Match the genre: arcade racers need speed and status readability, fighters need health/round/impact hierarchy, exploration needs inventory and objective clarity. A limited status palette over neutral surfaces. Connect UI motifs to world decals, faction marks, vehicle panels, pickups, and hazards. One-note purple/blue gradient UI needs a reason from the game world.
 
+Unless the art direction calls for them, avoid generic web defaults: cream/off-white panels, italic title accents, numbered "01/02/03" section labels, monospace text labels, and pill-shaped buttons. Tabular numerals remain useful for changing values. After the first pass, replace accidental defaults with motifs from the game world.
+
 ## Generated 2D assets
 
 `threejs-image-generator` covers what hand-coded CSS and icons cannot: faction logos, team crests, title marks; pickup/ability/weapon/inventory/achievement/objective icons; hazard signs, decals, lane glyphs, cockpit labels, item badges; menu, loading, and background plates; GUI material references such as glass panels, metal frames, holographic strips, parchment, tactical screens.
