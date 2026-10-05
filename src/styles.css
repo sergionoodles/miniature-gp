@@ -202,7 +202,7 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .stage-conditions { top: 8px; right: 8px; left: auto; transform: none; max-width: 100%; }
   .notification-stack { display: none; }
   .camera-toolbar { bottom: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; flex-wrap: nowrap; gap: 4px; }
-  .camera-toolbar .view-switch:has(.photo-button) { display: none; }
+  .camera-toolbar .view-switch:has(.photo-button), .camera-toolbar .camera-views { display: none; }
   .camera-toolbar button { min-width: 38px; min-height: 44px; }
   .view-switch button { padding: 0 6px; }
   .view-switch span { font-size: 10px; white-space: nowrap; }
@@ -240,7 +240,9 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .unavailable-panel p { color: var(--hud-muted); margin: 0 0 22px; }
 .unavailable-panel button { min-height: 42px; padding: 0 18px; border: 1px solid #dce4e55c; border-radius: 5px; background: #edf1f3; color: #111a22; font-weight: 700; }
 
-.camera-toolbar .photo-button svg { width: 17px; height: 17px; }
+.camera-toolbar .photo-button svg, .camera-toolbar .sound-button svg { width: 17px; height: 17px; }
+/* Keeps the sound highlight apart from the graphics highlight when both are on. */
+.camera-toolbar .sound-button { margin-left: 4px; }
 .photo-review[open] { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 32px; border: 0; background: transparent; color: inherit; display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 28px; align-items: center; overflow: auto; }
 .photo-review::backdrop { background: #04080cd9; backdrop-filter: blur(8px); animation: photo-fade-in .5s ease .25s both; }
 .photo-frame { --photo-max-height: calc(100dvh - 64px); position: relative; justify-self: center; width: min(100%, calc(var(--photo-max-height) * var(--photo-ratio))); aspect-ratio: var(--photo-ratio); overflow: hidden; border-radius: 6px; background: #09151f; box-shadow: 0 0 0 1px #ffffff2e, 0 26px 70px #000c; }

@@ -6,9 +6,12 @@ import { PhotoReview } from './PhotoReview'
 import { RaceResults } from './RaceResults'
 import { RaceStartLights, START_LIGHT_COUNT, START_LIGHT_INTERVAL } from './RaceStartLights'
 import { raceResults } from './raceResults'
+import { isCautionStatus, musicMoodFor } from './raceMusic'
+import { useRaceAudio } from './useRaceAudio'
 import { nextRaceAfter, nextSeason } from './nextRace'
 import type { RacePhotoHud, SceneCapture } from './racePhoto'
 import { createWeatherTimeline, describeWeather } from './raceWeather'
+import { isTimeShortcutTarget, SKIP_SECONDS, skipSecondsForKey } from './replayShortcuts'
 import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, racePositionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
 
 type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
@@ -28,7 +31,6 @@ const formatRaceDate = (date: string) => {
 }
 const SPEEDS = [1, 2, 5, 10, 25, 50, 100]
 const DEFAULT_SPEED = 10
-const SKIP_SECONDS = 60
 const NOTIFICATION_DURATION = 6000
 const LOADER_STEP_DURATION = 500
 const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
@@ -81,6 +83,7 @@ export default function App() {
   const previousNotificationTimeRef = useRef(0)
   const isPlayingRef = useRef(false)
   const speedRef = useRef(DEFAULT_SPEED)
+  const { audio, isSoundOn, toggleSound } = useRaceAudio()
 
   useEffect(() => {
     document.title = `${race.grandPrix} ${year} | Miniature GP`
@@ -222,6 +225,7 @@ export default function App() {
           isPlayingRef.current = false
           setIsPlaying(false)
           setIsResultsOpen(true)
+          audio.play('chequeredFlag')
         }
       }
       previous = now
@@ -237,6 +241,7 @@ export default function App() {
 
   useEffect(() => {
     if (countdown === null) return
+    audio.play('startLight')
     const timeout = window.setTimeout(() => {
       if (countdown > 1) {
         setCountdown(countdown - 1)
@@ -246,19 +251,22 @@ export default function App() {
       setHasStarted(true)
       isPlayingRef.current = true
       setIsPlaying(true)
+      audio.play('lightsOut')
     }, START_LIGHT_INTERVAL)
     return () => window.clearTimeout(timeout)
-  }, [countdown])
+  }, [audio, countdown])
 
   useEffect(() => {
     const previousTime = previousNotificationTimeRef.current
     previousNotificationTimeRef.current = time
     if (!replay || !hasStarted || time <= previousTime) return
+    const nextStatus = raceStatus(replay.raceControl, time)
+    if (isCautionStatus(nextStatus) && nextStatus !== raceStatus(replay.raceControl, previousTime)) audio.play('caution')
     const arrivals = notificationsBetween(replay, previousTime, time, speed)
     if (!arrivals.length) return
     const expiresAt = performance.now() + NOTIFICATION_DURATION
     setNotifications((current) => [...arrivals.reverse().map((notice) => ({ ...notice, expiresAt })), ...current].slice(0, 8))
-  }, [replay, time, hasStarted, speed])
+  }, [audio, replay, time, hasStarted, speed])
 
   useEffect(() => {
     if (!notifications.length) return
@@ -283,6 +291,7 @@ export default function App() {
   }
 
   const seek = (nextTime: number) => {
+    const isFinishing = replay !== null && nextTime >= replay.duration && timeRef.current < replay.duration
     setCountdown(null)
     if (nextTime > 0) setHasStarted(true)
     timeRef.current = nextTime
@@ -293,12 +302,26 @@ export default function App() {
       setPlayback(false)
       setIsResultsOpen(true)
     }
+    if (isFinishing) audio.play('chequeredFlag')
   }
 
   const skip = (seconds: number) => {
     if (!replay) return
     seek(Math.min(replay.duration, Math.max(0, timeRef.current + seconds)))
   }
+
+  useEffect(() => {
+    if (!replay) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const seconds = skipSecondsForKey(event)
+      if (seconds === null || event.defaultPrevented || !isTimeShortcutTarget(event.target)) return
+      event.preventDefault()
+      skip(seconds)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  // skip only depends on the replay; the rest of its state is read through refs and setters.
+  }, [replay])
 
   const changeSpeed = (nextSpeed: number) => {
     speedRef.current = nextSpeed
@@ -323,6 +346,12 @@ export default function App() {
   const weather = weatherAt?.(time) ?? null
   const conditions = weather ? describeWeather(weather) : null
   const status = replay ? raceStatus(replay.raceControl, time) : 'Loading'
+  const isCountingDown = countdown !== null
+
+  useEffect(() => {
+    audio.setMood(musicMoodFor({ isCountingDown, isPlaying, status }))
+  }, [audio, isCountingDown, isPlaying, status])
+
   const firstLaunch = replay?.raceLaunches?.[0]
   const isBeforeLaunch = firstLaunch !== undefined && time < firstLaunch.time
   const leaderLap = order[0]?.lap ?? 1
@@ -337,6 +366,7 @@ export default function App() {
   const takePhoto = (capture: SceneCapture) => {
     const resumesPlayback = isPlayingRef.current
     setPlayback(false)
+    audio.play('shutter')
     setPhoto({
       capture,
       resumesPlayback,
@@ -469,7 +499,7 @@ export default function App() {
         <section className="race-stage" aria-label="Race simulation">
           <button className="order-toggle" type="button" aria-label="Open running order" aria-controls="running-order-panel" aria-expanded={isOrderOpen} onClick={() => setIsOrderOpen(true)}><span aria-hidden="true">☰</span></button>
           {isOrderOpen && <button className="order-backdrop" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)} />}
-          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} />}
+          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isSoundOn={isSoundOn} onToggleSound={toggleSound} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
             <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>
@@ -523,11 +553,11 @@ export default function App() {
       <footer className="transport">
         <div className="replay-label"><span className="section-eyebrow">SESSION REPLAY</span><strong>{countdown !== null ? 'Starting' : isPlaying ? 'Playing' : 'Paused'} <span className={isPlaying ? 'playback-dot active' : 'playback-dot'} /></strong></div>
         <div className="transport-controls">
-          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(-SKIP_SECONDS)} aria-label="Back 1 minute" title="Back 1 minute"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 9a1 1 0 0 1-1-1V4.707a.707.707 0 0 0-1.207-.5l-6.94 6.94a1.207 1.207 0 0 0 0 1.707l6.94 6.94a.707.707 0 0 0 1.207-.5V16a1 1 0 0 1 1-1h2a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1z" /><path d="M20 9v6" /></svg></button>
+          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(-SKIP_SECONDS)} aria-label="Back 1 minute" title="Back 1 minute (←)"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 9a1 1 0 0 1-1-1V4.707a.707.707 0 0 0-1.207-.5l-6.94 6.94a1.207 1.207 0 0 0 0 1.707l6.94 6.94a.707.707 0 0 0 1.207-.5V16a1 1 0 0 1 1-1h2a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1z" /><path d="M20 9v6" /></svg></button>
           <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(countdown === null && !isPlaying)} aria-label={countdown !== null ? 'Cancel race start' : isPlaying ? 'Pause replay' : 'Play replay'}>
             {isPlaying || countdown !== null ? <span className="pause-icon" /> : <span className="play-icon" />}
           </button>
-          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(SKIP_SECONDS)} aria-label="Forward 1 minute" title="Forward 1 minute"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 9a1 1 0 0 0 1-1V4.707a.707.707 0 0 1 1.207-.5l6.94 6.94a1.207 1.207 0 0 1 0 1.707l-6.94 6.94a.707.707 0 0 1-1.207-.5V16a1 1 0 0 0-1-1H9a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" /><path d="M4 9v6" /></svg></button>
+          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(SKIP_SECONDS)} aria-label="Forward 1 minute" title="Forward 1 minute (→)"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 9a1 1 0 0 0 1-1V4.707a.707.707 0 0 1 1.207-.5l6.94 6.94a1.207 1.207 0 0 1 0 1.707l-6.94 6.94a.707.707 0 0 1-1.207-.5V16a1 1 0 0 0-1-1H9a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" /><path d="M4 9v6" /></svg></button>
         </div>
         <div className="timeline-wrap">
           <div className="time-labels"><span>{clockLabel(time)}</span><span>{replay ? clockLabel(replay.duration) : '00:00:00'}</span></div>
