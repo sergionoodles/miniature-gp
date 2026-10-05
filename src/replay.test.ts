@@ -128,6 +128,34 @@ it('holds the official grid until launch and excludes pre-launch position artifa
   expect(racePositionsAt({ ...replay, raceControl: [] }, 29).get(12)).toBe(1)
 })
 
+it.each(['Delayed start', 'Formation lap', 'Start suspended', 'Waiting for start'])(
+  'suppresses overtake notifications during %s, including restarts',
+  (phase) => {
+    const replay = {
+      drivers: [], pits: [], weather: [],
+      overtakes: [[5, 12, 63, 1], [15, 12, 63, 1], [20, 12, 63, 1], [25, 12, 63, 1], [35, 12, 63, 1], [45, 12, 63, 1]],
+      raceControl: [
+        [10, 'StartPhase', null, phase],
+        [12, 'SessionStatus', null, 'SESSION STARTED'],
+        [20, 'StartPhase', null, 'Racing'],
+        [30, 'StartPhase', null, phase],
+        [40, 'StartPhase', null, 'Racing'],
+      ],
+    } as unknown as Replay
+    const overtakes = notificationsBetween(replay, 0, 50).filter(({ id }) => id.startsWith('overtake-'))
+    expect(overtakes.map(({ time }) => time)).toEqual([20, 25, 45])
+    expect(notificationsBetween(replay, 0, 19).some(({ id }) => id.startsWith('overtake-'))).toBe(false)
+  },
+)
+
+it('suppresses overtakes when a start phase has no confirmed launch', () => {
+  const replay = {
+    drivers: [], pits: [], weather: [], overtakes: [[15, 12, 63, 1]],
+    raceControl: [[0, 'StartPhase', null, 'Formation lap']],
+  } as unknown as Replay
+  expect(notificationsBetween(replay, 0, 20).some(({ id }) => id.startsWith('overtake-'))).toBe(false)
+})
+
 it('requires grid and overtake data in a replay', () => {
   const replay = { duration: 10, start: '2026-09-06', drivers: [], track: [], locations: {}, positions: [], laps: [], pits: [], weather: [], raceControl: [], startingGrid: [], startingGridSource: 'position', overtakes: [] }
   expect(isReplay(replay)).toBe(true)

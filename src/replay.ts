@@ -186,10 +186,13 @@ export function raceStatus(events: RaceEvent[], time: number): string {
 
 export function notificationsBetween(replay: Replay, from: number, to: number, speed = 10): ReplayNotification[] {
   const notifications: ReplayNotification[] = []
-  const hasStartPhases = replay.raceControl.some(([, category]) => category === 'StartPhase')
+  const startPhases = replay.raceControl.filter(([, category]) => category === 'StartPhase')
+  const hasStartPhases = startPhases.length > 0
   const drivers = new Map(replay.drivers.map((driver) => [driver.number, driver]))
   if (speed < OVERTAKE_NOTIFICATION_CUTOFF) replay.overtakes.forEach(([time, overtaking, overtaken, position], index) => {
     if (time <= from || time > to) return
+    const phase = startPhases.reduce<string | null>((current, [phaseTime, , , message]) => phaseTime <= time ? message : current, null)
+    if (hasStartPhases && phase !== 'Racing') return
     const overtakingDriver = drivers.get(overtaking)
     const overtakenDriver = drivers.get(overtaken)
     notifications.push({
