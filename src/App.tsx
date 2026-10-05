@@ -563,8 +563,8 @@ export default function App() {
               {weather && <span className="weather-details">Air {weather.airTemperature.toFixed(1)}° · Track {weather.trackTemperature.toFixed(1)}°</span>}
             </div>
           </div>
-          {status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}
-          {START_PHASE_NOTICES[status] && <div className="race-notice">{status} <span>{START_PHASE_NOTICES[status]}</span></div>}
+          {hasStarted && status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}
+          {hasStarted && START_PHASE_NOTICES[status] && <div className="race-notice">{status} <span>{START_PHASE_NOTICES[status]}</span></div>}
           <div className="notification-stack" aria-label="Race notifications" aria-live="polite">
             {notifications.map((notice) => <div className="race-toast" key={notice.id}>
               {notice.drivers
