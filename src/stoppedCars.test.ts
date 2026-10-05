@@ -41,6 +41,10 @@ describe('stopped car inference', () => {
     replay.raceControl = [[20, 'SafetyCar', null, 'VSC DEPLOYED']]
     expect(stoppedAt(detectStoppedCars(replay).get(1) ?? [], 25)).not.toBeNull()
   })
+  it('keeps a car waiting on the grid visible while others are still approaching', () => {
+    const replay = { ...fixture(), raceControl: [[0, 'StartPhase', null, 'Waiting for start']] as Replay['raceControl'] }
+    expect(detectStoppedCars(replay).get(1)).toEqual([])
+  })
   it('keeps a confirmed stopped marker after telemetry ends, without inventing one for missing data', () => {
     const replay = fixture()
     replay.locations['1'] = replay.locations['1'].slice(0, 45)

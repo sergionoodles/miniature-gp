@@ -8,7 +8,7 @@ import { raceResults } from './raceResults'
 import { nextRaceAfter, nextSeason } from './nextRace'
 import type { RacePhotoHud, SceneCapture } from './racePhoto'
 import { createWeatherTimeline, describeWeather } from './raceWeather'
-import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, positionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
+import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, racePositionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
 
 type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
 const FALLBACK_RACES: RaceOption[] = [
@@ -30,6 +30,12 @@ const DEFAULT_SPEED = 10
 const NOTIFICATION_DURATION = 6000
 const LOADER_STEP_DURATION = 500
 const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
+const START_PHASE_NOTICES: Record<string, string> = {
+  'Delayed start': 'Waiting for race control',
+  'Formation lap': 'The field is preparing for the start',
+  'Start suspended': 'The start procedure has been suspended',
+  'Waiting for start': 'Preparing for lights out',
+}
 const routeFromPath = (pathname: string) => {
   const match = pathname.match(/^\/(\d{4})\/([^/]+)\/?$/)
   return match ? { year: Number(match[1]), circuitSlug: match[2] } : null
@@ -297,7 +303,7 @@ export default function App() {
     if (!replay) return []
     const positions = time === 0 && !isPlaying
       ? new Map(replay.startingGrid)
-      : positionsAt(replay.positions, time)
+      : racePositionsAt(replay, time)
     const laps = lapsAt(replay.laps, time)
     return replay.drivers
       .map((driver) => ({ ...driver, position: positions.get(driver.number) ?? 99, lap: laps.get(driver.number) ?? 1 }))
@@ -310,6 +316,8 @@ export default function App() {
   const weather = weatherAt?.(time) ?? null
   const conditions = weather ? describeWeather(weather) : null
   const status = replay ? raceStatus(replay.raceControl, time) : 'Loading'
+  const firstLaunch = replay?.raceLaunches?.[0]
+  const isBeforeLaunch = firstLaunch !== undefined && time < firstLaunch.time
   const leaderLap = order[0]?.lap ?? 1
   const isRaining = conditions?.label === 'Rain'
   const selected = order.find((driver) => driver.number === selectedDriver)
@@ -429,7 +437,7 @@ export default function App() {
         <aside id="running-order-panel" className={`order-panel${isOrderOpen ? ' order-panel-open' : ''}`}>
           <div className="panel-heading">
             <div>
-              <span className="section-title">Running order</span>
+              <span className="section-title">{isBeforeLaunch ? 'Starting order' : 'Running order'}</span>
               <span className="section-note">{race.circuit.replace('Circuit ', '')} · {formatRaceDate(race.date)}</span>
             </div>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
@@ -480,6 +488,7 @@ export default function App() {
             </div>
           </div>
           {status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}
+          {START_PHASE_NOTICES[status] && <div className="race-notice">{status} <span>{START_PHASE_NOTICES[status]}</span></div>}
           <div className="notification-stack" aria-label="Race notifications" aria-live="polite">
             {notifications.map((notice) => <div className="race-toast" key={notice.id}>
               {notice.drivers
@@ -489,7 +498,7 @@ export default function App() {
             </div>)}
           </div>
           {replay && (!hasStarted || countdown !== null) && <div className="race-start-hud">
-            {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start race</button> : <div className="race-start-countdown" role="status" aria-live="polite"><span>RACE START</span><strong>{countdown}</strong><div className={`start-lights step-${4 - countdown}`} aria-hidden="true"><i /><i /><i /></div></div>}
+            {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start replay</button> : <div className="race-start-countdown" role="status" aria-live="polite"><span>REPLAY START</span><strong>{countdown}</strong><div className={`start-lights step-${4 - countdown}`} aria-hidden="true"><i /><i /><i /></div></div>}
           </div>}
           {replay && !unavailable && !isResultsOpen && time >= replay.duration && <div className="race-start-hud">
             <button className="race-start-button" type="button" onClick={() => setIsResultsOpen(true)}><span className="results-button-flag" aria-hidden="true" /> Race results</button>
