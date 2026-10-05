@@ -170,6 +170,10 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .timeline::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; margin-top: -4.5px; border-radius: 50%; border: 2px solid #111a22; background: #f3f5f5; box-shadow: 0 0 0 1px #f3f5f5; }
 .timeline::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #111a22; background: #f3f5f5; }
 .speed-picker { flex: 0 0 78px; }
+@media (min-width: 1101px) {
+  .race-picker label:last-child { flex: 0 0 460px; width: 460px; min-width: 0; }
+  .race-picker label:last-child select { width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+}
 @media (max-width: 1100px) {
   .order-panel { width: 268px; }
   .driver-row { gap: 6px; padding-inline: 10px; }
@@ -186,7 +190,7 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .app-name { font-size: 20px; }
   .race-picker { width: 100%; gap: 12px; }
   .race-picker label:last-child { flex: 1; min-width: 0; }
-  .race-picker select { width: 100%; min-height: 44px; }
+  .race-picker select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .workspace { flex-direction: column-reverse; }
   .race-stage { position: relative; inset: auto; flex: none; height: clamp(430px, calc(100svh - 265px), 600px); }
   .order-toggle { position: absolute; display: grid; place-items: center; top: 8px; left: 8px; width: 40px; height: 40px; border: 1px solid var(--hud-border); border-radius: 5px; background: var(--hud-background); backdrop-filter: blur(12px); font-size: 18px; z-index: 5; }
@@ -203,8 +207,10 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .notification-stack { display: none; }
   .camera-toolbar { bottom: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; flex-wrap: nowrap; gap: 4px; }
   .camera-toolbar .view-switch:has(.photo-button), .camera-toolbar .camera-views { display: none; }
-  .camera-toolbar button { min-width: 38px; min-height: 44px; }
+  .camera-toolbar .view-switch, .camera-toolbar .zoom-controls { padding: 3px; }
+  .camera-toolbar button { min-width: 38px; min-height: 32px; }
   .view-switch button { padding: 0 6px; }
+  .camera-toolbar .sound-button { justify-content: center; }
   .view-switch span { font-size: 10px; white-space: nowrap; }
   .zoom-controls button:nth-child(-n+2) { display: none; }
   .stage-bottomline { display: none; }

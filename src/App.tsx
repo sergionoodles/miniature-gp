@@ -57,6 +57,8 @@ export default function App() {
   const [year, setYear] = useState(() => routeFromPath(window.location.pathname)?.year ?? 2026)
   const [requestedCircuitSlug, setRequestedCircuitSlug] = useState(() => routeFromPath(window.location.pathname)?.circuitSlug ?? null)
   const [races, setRaces] = useState(FALLBACK_RACES)
+  const [pickerYear, setPickerYear] = useState(year)
+  const [pickerRaces, setPickerRaces] = useState(FALLBACK_RACES)
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
   const [isOrderOpen, setIsOrderOpen] = useState(false)
@@ -89,7 +91,7 @@ export default function App() {
     document.title = `${race.grandPrix} ${year} | Miniature GP`
   }, [race.grandPrix, year])
 
-  const selectRace = (nextRaceId: string, options = races, updateHistory = true) => {
+  const selectRace = (nextRaceId: string, options = races, updateHistory = true, nextYear = year) => {
     isPlayingRef.current = false
     timeRef.current = 0
     previousNotificationTimeRef.current = 0
@@ -111,7 +113,7 @@ export default function App() {
     setIsResultsOpen(false)
     setRaceId(nextRaceId)
     const nextRace = options.find((option) => option.id === nextRaceId)
-    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(year, nextRace))
+    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(nextYear, nextRace))
   }
 
   useEffect(() => {
@@ -158,6 +160,42 @@ export default function App() {
       })
     return () => controller.abort()
   }, [year, requestedCircuitSlug])
+
+  useEffect(() => {
+    setPickerYear(year)
+  }, [year])
+
+  useEffect(() => {
+    if (pickerYear === year) {
+      setPickerRaces(races)
+      return
+    }
+    const controller = new AbortController()
+    setPickerRaces([])
+    fetch(`/data/${pickerYear}/races-${pickerYear}.json`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Race catalog could not be loaded (${response.status}).`)
+        return response.json() as Promise<unknown>
+      })
+      .then((value) => {
+        if (!Array.isArray(value) || !value.length || !value.every(isRaceOption)) throw new Error('Race catalog is invalid.')
+        setPickerRaces([...value].sort((first, second) => second.date.localeCompare(first.date)))
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === 'AbortError') return
+        console.error('The selected season could not be loaded:', cause)
+      })
+    return () => controller.abort()
+  }, [pickerYear, year, races])
+
+  const selectPickerRace = (nextRaceId: string) => {
+    const nextRace = pickerRaces.find((option) => option.id === nextRaceId)
+    if (!nextRace) return
+    if (pickerYear !== year) setRequestedCircuitSlug(circuitSlug(nextRace.circuit))
+    setYear(pickerYear)
+    setRaces(pickerRaces)
+    selectRace(nextRaceId, pickerRaces, true, pickerYear)
+  }
 
   useEffect(() => {
     const handlePopState = () => {
@@ -463,9 +501,10 @@ export default function App() {
           </div>
         </div>
         <div className="race-picker" role="group" aria-label="Selected race">
-          <label>Season<select aria-label="Season" value={year} onChange={(event) => { setRequestedCircuitSlug(circuitSlug(race.circuit)); setYear(Number(event.target.value)) }}>{years.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-          <label>Grand Prix<select aria-label="Grand Prix" value={race.id} onChange={(event) => selectRace(event.target.value)}>
-            {races.map((option) => <option key={option.id} value={option.id}>{option.label}{option.date ? ` · ${formatRaceDate(option.date)}` : ''}</option>)}
+          <label>Season<select aria-label="Season" value={pickerYear} onChange={(event) => setPickerYear(Number(event.target.value))}>{years.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+          <label>Grand Prix<select aria-label="Grand Prix" value={pickerYear === year ? race.id : ""} disabled={!pickerRaces.length} onChange={(event) => selectPickerRace(event.target.value)}>
+            {pickerYear !== year && <option value="" disabled hidden>{pickerRaces.length ? 'Select a Grand Prix' : 'Loading races…'}</option>}
+            {pickerRaces.map((option) => <option key={option.id} value={option.id}>{option.label}{option.date ? ` · ${formatRaceDate(option.date)}` : ''}</option>)}
           </select></label>
         </div>
       </header>
