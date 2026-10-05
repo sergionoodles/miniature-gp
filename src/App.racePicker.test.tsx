@@ -44,6 +44,42 @@ function findSelect(node: ReactNode, label: string): SelectHTMLAttributes<HTMLSe
   return findSelect(node.props.children, label)
 }
 
+function textContent(node: ReactNode): string {
+  if (Array.isArray(node)) return node.map(textContent).join(' ')
+  if (isValidElement<{ children?: ReactNode }>(node)) return textContent(node.props.children)
+  return typeof node === 'string' ? node : ''
+}
+
+function stubBrowser() {
+  vi.stubGlobal('window', {
+    location: { pathname: '/' },
+    history: { pushState: vi.fn(), replaceState: vi.fn() },
+    addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    setTimeout, clearTimeout, clearInterval,
+  })
+  vi.stubGlobal('document', { title: '', removeEventListener: vi.fn() })
+  vi.stubGlobal('requestAnimationFrame', vi.fn())
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+}
+
+function createDeferredPromise<Value>() {
+  const controls: { resolve: (value: Value) => void; reject: (cause: unknown) => void } = {
+    resolve: () => { throw new Error('Promise is not initialized') },
+    reject: () => { throw new Error('Promise is not initialized') },
+  }
+  const promise = new Promise<Value>((resolve, reject) => {
+    controls.resolve = resolve
+    controls.reject = reject
+  })
+  return { promise, ...controls }
+}
+
+const replay = {
+  duration: 60, start: '2026-09-06T13:00:00Z', drivers: [], track: [], locations: {},
+  positions: [], startingGrid: [], startingGridSource: 'position', overtakes: [],
+  laps: [], pits: [], weather: [], raceControl: [], stints: [],
+}
+
 async function renderApp() {
   let tree: ReactNode = null
   for (let pass = 0; pass < 5; pass += 1) {
@@ -66,7 +102,86 @@ afterEach(() => {
   hooks.values = []
   hooks.effects = []
   hooks.pending = []
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('waits for the catalog before requesting a replay on first load', async () => {
+  stubBrowser()
+  const currentRace = race(2026, 'latest', 'Monza')
+  const catalog = createDeferredPromise<Response>()
+  const fetchData = vi.fn(async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2026])
+    if (url === '/data/2026/races-2026.json') return catalog.promise
+    if (url === currentRace.url) return Response.json(replay)
+    return new Response('<!DOCTYPE html><html></html>', { headers: { 'Content-Type': 'text/html' } })
+  })
+  vi.stubGlobal('fetch', fetchData)
+
+  const loadingTree = await renderApp()
+  expect(fetchData.mock.calls.map(([url]) => url)).toEqual(['/data/years.json', '/data/2026/races-2026.json'])
+  expect(textContent(loadingTree)).not.toContain('RACE DATA UNAVAILABLE')
+
+  catalog.resolve(Response.json([currentRace]))
+  const loadedTree = await renderApp()
+  expect(fetchData.mock.calls.map(([url]) => url)).toContain(currentRace.url)
+  expect(textContent(loadedTree)).not.toContain('RACE DATA UNAVAILABLE')
+})
+
+it('ignores a superseded replay failure after another race loads', async () => {
+  stubBrowser()
+  const firstRace = race(2026, 'first', 'Monza')
+  const secondRace = { ...race(2026, 'second', 'Monaco'), date: '2026-08-01' }
+  const firstReplay = createDeferredPromise<unknown>()
+  vi.stubGlobal('fetch', async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2026])
+    if (url === '/data/2026/races-2026.json') return Response.json([firstRace, secondRace])
+    if (url === firstRace.url) return { ok: true, json: () => firstReplay.promise }
+    return Response.json(replay)
+  })
+
+  const tree = await renderApp()
+  findSelect(tree, 'Grand Prix')?.onChange?.({ target: { value: secondRace.id } } as React.ChangeEvent<HTMLSelectElement>)
+  await renderApp()
+  firstReplay.reject(new SyntaxError('Unexpected token <'))
+  const loadedTree = await renderApp()
+
+  expect(document.title).toContain('Monaco 2026')
+  expect(textContent(loadedTree)).not.toContain('RACE DATA UNAVAILABLE')
+})
+
+it('uses an existing bundled replay when the catalog cannot be loaded', async () => {
+  stubBrowser()
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  const fallbackUrl = '/data/2026/2026-09-06-ITA-MONZA-11361.json'
+  const fetchData = vi.fn(async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2026])
+    if (url === fallbackUrl) return Response.json(replay)
+    return new Response('<!DOCTYPE html><html></html>', { headers: { 'Content-Type': 'text/html' } })
+  })
+  vi.stubGlobal('fetch', fetchData)
+
+  const tree = await renderApp()
+
+  expect(fetchData.mock.calls.map(([url]) => url)).toContain(fallbackUrl)
+  expect(textContent(tree)).not.toContain('RACE DATA UNAVAILABLE')
+  consoleError.mockRestore()
+})
+
+it('shows a readable error when the selected replay returns HTML', async () => {
+  stubBrowser()
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  vi.stubGlobal('fetch', async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2026])
+    if (url === '/data/2026/races-2026.json') return Response.json([race(2026, 'missing', 'Monza')])
+    return new Response('<!DOCTYPE html><html></html>', { headers: { 'Content-Type': 'text/html' } })
+  })
+
+  const tree = await renderApp()
+
+  expect(textContent(tree)).toContain('Race data could not be loaded. Please refresh to try again.')
+  expect(textContent(tree)).not.toContain('Unexpected token')
+  consoleError.mockRestore()
 })
 
 it('only changes the race and route after a Grand Prix is selected in the browsed season', async () => {

@@ -16,8 +16,8 @@ import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTA
 
 type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
 const FALLBACK_RACES: RaceOption[] = [
-  { id: '11361', url: '/data/2026/monza-2026.json', label: 'Italian Grand Prix · Monza', circuit: 'Autodromo Nazionale Monza', grandPrix: 'Italian Grand Prix', location: 'Monza', countryCode: 'ITA', date: '2026-09-06', laps: 53 },
-  { id: '11353', url: '/data/2026/netherlands-2026.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Circuit Zandvoort', grandPrix: 'Dutch Grand Prix', location: 'Zandvoort', countryCode: 'NLD', date: '2026-08-23', laps: 72 },
+  { id: '11361', url: '/data/2026/2026-09-06-ITA-MONZA-11361.json', label: 'Italian Grand Prix · Monza', circuit: 'Monza', grandPrix: 'Italian Grand Prix', location: 'Monza', countryCode: 'ITA', date: '2026-09-06', laps: 53 },
+  { id: '11353', url: '/data/2026/2026-08-23-NLD-ZANDVOORT-11353.json', label: 'Dutch Grand Prix · Zandvoort', circuit: 'Zandvoort', grandPrix: 'Dutch Grand Prix', location: 'Zandvoort', countryCode: 'NLD', date: '2026-08-23', laps: 72 },
 ]
 const isRaceOption = (value: unknown): value is RaceOption => {
   if (typeof value !== 'object' || value === null) return false
@@ -57,6 +57,8 @@ export default function App() {
   const [year, setYear] = useState(() => routeFromPath(window.location.pathname)?.year ?? 2026)
   const [requestedCircuitSlug, setRequestedCircuitSlug] = useState(() => routeFromPath(window.location.pathname)?.circuitSlug ?? null)
   const [races, setRaces] = useState(FALLBACK_RACES)
+  const catalogKey = `${year}/${requestedCircuitSlug ?? ''}`
+  const [loadedCatalogKey, setLoadedCatalogKey] = useState<string | null>(null)
   const [pickerYear, setPickerYear] = useState(year)
   const [pickerRaces, setPickerRaces] = useState(FALLBACK_RACES)
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
@@ -145,21 +147,31 @@ export default function App() {
         return response.json() as Promise<unknown>
       })
       .then((value) => {
-        if (value === null) return
+        if (controller.signal.aborted) return
+        if (value === null) throw new Error(`Race catalog is unavailable for ${year}.`)
         if (!Array.isArray(value) || !value.length || !value.every(isRaceOption)) throw new Error('Race catalog is invalid.')
         const options = [...value].sort((first, second) => second.date.localeCompare(first.date))
         setRaces(options)
         const requestedRace = requestedCircuitSlug ? options.find((option) => circuitSlug(option.circuit) === requestedCircuitSlug) : undefined
         const nextRace = requestedRace ?? options[0]
         selectRace(nextRace.id, options, false)
+        setLoadedCatalogKey(catalogKey)
         window.history.replaceState(null, '', racePath(year, nextRace))
       })
       .catch((cause: unknown) => {
+        if (controller.signal.aborted) return
         if (cause instanceof DOMException && cause.name === 'AbortError') return
         console.error('Using bundled race list:', cause)
+        if (year === 2026) {
+          setRaces(FALLBACK_RACES)
+          selectRace(FALLBACK_RACES[0].id, FALLBACK_RACES, false)
+          setLoadedCatalogKey(catalogKey)
+          return
+        }
+        setError(`Race data could not be loaded for ${year}. Please refresh to try again.`)
       })
     return () => controller.abort()
-  }, [year, requestedCircuitSlug])
+  }, [year, requestedCircuitSlug, catalogKey])
 
   useEffect(() => {
     setPickerYear(year)
@@ -213,27 +225,32 @@ export default function App() {
   }, [year, races])
 
   useEffect(() => {
+    if (loadedCatalogKey !== catalogKey) return
     const controller = new AbortController()
     setUnavailable(false)
     setPastRace(null)
+    setError(null)
     fetch(race.url, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Replay file could not be loaded (${response.status}).`)
         return response.json() as Promise<unknown>
       })
       .then(async (value) => {
+        if (controller.signal.aborted) return
         if (typeof value === 'object' && value !== null && (value as Record<string, unknown>).invalid === true) {
           setUnavailable(true)
           for (const previousYear of years.filter((candidate) => candidate < year)) {
             const catalogResponse = await fetch(`/data/${previousYear}/races-${previousYear}.json`, { signal: controller.signal })
             if (!catalogResponse.ok) continue
             const catalog: unknown = await catalogResponse.json()
+            if (controller.signal.aborted) return
             if (!Array.isArray(catalog)) continue
             const previousRace = catalog.find((entry): entry is RaceOption => isRaceOption(entry) && entry.circuit.toLowerCase() === race.circuit.toLowerCase())
             if (!previousRace) continue
             const replayResponse = await fetch(previousRace.url, { signal: controller.signal })
             if (!replayResponse.ok) continue
             const previousReplay: unknown = await replayResponse.json()
+            if (controller.signal.aborted) return
             if (!isReplay(previousReplay)) continue
             setReplay(previousReplay)
             setPastRace({ year: previousYear, race: previousRace })
@@ -245,11 +262,13 @@ export default function App() {
         setReplay(value)
       })
       .catch((cause: unknown) => {
+        if (controller.signal.aborted) return
         if (cause instanceof DOMException && cause.name === 'AbortError') return
-        setError(cause instanceof Error ? cause.message : 'The replay file could not be loaded.')
+        console.error('The replay file could not be loaded:', cause)
+        setError(cause instanceof Error && !(cause instanceof SyntaxError) ? cause.message : 'Race data could not be loaded. Please refresh to try again.')
       })
     return () => controller.abort()
-  }, [race.url, race.circuit, year, years])
+  }, [race.url, race.circuit, year, years, loadedCatalogKey, catalogKey])
 
   useEffect(() => {
     if (!replay) return
