@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import type { GridEntry } from './replay'
 
 const CIRCUIT_SPAN = 180
+// Room around the circuit's outline, so its edge never sits on the frame.
+export const CIRCUIT_MARGIN = 38
+const UP = new THREE.Vector3(0, 1, 0)
 const GRID_START_OFFSET = 2
 const GRID_ROW_SPACING = 3.5
 const GRID_LANE_OFFSET = 0.72
@@ -125,6 +128,22 @@ export function canPlaceStructure(track: THREE.Vector3[], center: THREE.Vector3,
     const offset = point.clone().sub(center)
     return Math.abs(offset.dot(tangent)) > length / 2 + clearance || Math.abs(offset.dot(outward)) > halfDepth + clearance
   })
+}
+
+// The camera turn about the vertical that lays the start straight across the screen. Of the two
+// turns that do, this is the smaller, so circuits already lying that way keep their view.
+export function startStraightViewYaw(track: THREE.Vector3[]) {
+  const forward = track[0].clone().sub(track[track.length - 1])
+  if (!forward.x && !forward.z) return 0
+  return Math.atan(-forward.z / forward.x)
+}
+
+// The circuit's width and depth as seen from a camera turned by yaw. The camera stays centred on
+// the origin, so each extent covers the farther side twice.
+export function circuitViewExtent(track: THREE.Vector3[], yaw: number) {
+  const turned = track.map((point) => point.clone().applyAxisAngle(UP, -yaw))
+  const reach = (axis: 'x' | 'z') => Math.max(...turned.map((point) => Math.abs(point[axis])))
+  return { width: reach('x') * 2 + CIRCUIT_MARGIN, depth: reach('z') * 2 + CIRCUIT_MARGIN }
 }
 
 export function frameCircuitCameraInPlace(camera: THREE.OrthographicCamera, width: number, height: number, circuitWidth: number, circuitDepth: number, sidebar: number) {

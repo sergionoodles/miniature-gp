@@ -5,7 +5,7 @@ import { createRaceLighting, getRaceDaylight, getRaceLocalHour } from './raceLig
 import type { WeatherTimeline } from './raceWeather'
 import { createRain, createRainSplashes } from './rainEffect'
 import { lappedDriversAt, type Replay } from './replay'
-import { createProjection, createUnprojection } from './circuitGeometry'
+import { CIRCUIT_MARGIN, createProjection, createUnprojection } from './circuitGeometry'
 import { createCarKit } from './carModel'
 import type { GraphicsQuality } from './graphicsQuality'
 import { createCarSpray } from './carSpray'
@@ -132,8 +132,8 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
   const track = new THREE.CatmullRomCurve3(rawTrack, true, 'centripetal').getSpacedPoints(TRACK_SAMPLES).slice(0, -1)
   const bounds = new THREE.Box3().setFromPoints(track)
   const size = bounds.getSize(new THREE.Vector3())
-  const width = size.x + 38
-  const depth = size.z + 38
+  const width = size.x + CIRCUIT_MARGIN
+  const depth = size.z + CIRCUIT_MARGIN
   const environment = resolveCircuitEnvironment(circuit)
   // The pit lane is traced from the pitting cars' own telemetry, so every circuit gets one.
   const pitLane = findPitLane(track, pitPasses(replay, project))
@@ -205,5 +205,5 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
     rainLights.forEach((light) => { light.visible = isLit })
     spray.update([...cars.values()], isDetailed ? currentWeather.wetness : 0, deltaSeconds)
   }
-  return { scene, overlay, cars, locations, updateCarEffects, updateCarLivery, project, width, depth, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
+  return { scene, overlay, cars, locations, updateCarEffects, updateCarLivery, project, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
 }

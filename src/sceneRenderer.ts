@@ -147,20 +147,25 @@ export function createSceneRenderer(scene: THREE.Scene, overlay: THREE.Scene, ca
     renderer.render(overlay, camera)
     renderer.autoClear = true
   }
-  // The drawing buffer is only readable until the frame is presented, so the photo frame is
-  // rendered and copied in one go, then the screen resolution is restored and redrawn.
-  const capture = (look: FrameLook) => {
-    const screenPixelRatio = renderer.getPixelRatio()
-    const pixelRatio = Math.min(PHOTO_PIXEL_RATIO, MAX_PHOTO_EDGE / Math.max(size.width, size.height))
-    renderer.setPixelRatio(pixelRatio)
-    setSize(size.width, size.height)
+  // The drawing buffer is only readable until the frame is presented, so each frame is rendered
+  // and copied in one go.
+  const copyFrame = (look: FrameLook) => {
     render(look)
     const image = document.createElement('canvas')
     image.width = renderer.domElement.width
     image.height = renderer.domElement.height
     const context = image.getContext('2d')
-    if (!context) throw new Error('The photo canvas could not be created.')
+    if (!context) throw new Error('The frame copy canvas could not be created.')
     context.drawImage(renderer.domElement, 0, 0)
+    return image
+  }
+  // The photo renders at its own resolution, then the screen resolution is restored and redrawn.
+  const capture = (look: FrameLook) => {
+    const screenPixelRatio = renderer.getPixelRatio()
+    const pixelRatio = Math.min(PHOTO_PIXEL_RATIO, MAX_PHOTO_EDGE / Math.max(size.width, size.height))
+    renderer.setPixelRatio(pixelRatio)
+    setSize(size.width, size.height)
+    const image = copyFrame(look)
     renderer.setPixelRatio(screenPixelRatio)
     setSize(size.width, size.height)
     render(look)
@@ -171,7 +176,7 @@ export function createSceneRenderer(scene: THREE.Scene, overlay: THREE.Scene, ca
     environment.dispose()
     renderer.dispose()
   }
-  return { renderer, canvas: renderer.domElement, setSize, render, capture, dispose }
+  return { renderer, canvas: renderer.domElement, setSize, render, capture, snapshot: copyFrame, dispose }
 }
 
 function createPostChain(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {

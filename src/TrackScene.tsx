@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
-import { frameCircuitCameraInPlace, interpolateStartPose, START_TRANSITION_SECONDS, startingGridLocations } from './circuitGeometry'
+import { circuitViewExtent, frameCircuitCameraInPlace, interpolateStartPose, startStraightViewYaw, START_TRANSITION_SECONDS, startingGridLocations } from './circuitGeometry'
 import { buildCircuit } from './circuitWorld'
 import { createSceneRenderer, type FrameLook } from './sceneRenderer'
 import { orbitCameraInPlace } from './finishOrbit'
@@ -11,6 +11,7 @@ import type { WeatherTimeline } from './raceWeather'
 import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, createSelectionMarker, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
 import type { SceneCapture } from './racePhoto'
+import { SceneHandoff } from './SceneHandoff'
 
 const MARKER_PULSE_SPEED = 0.005
 const MARKER_PULSE_SCALE = 0.08
@@ -21,6 +22,8 @@ const STANDARD_FRAME_MS = 30
 const COMPACT_LAYOUT_WIDTH = 760
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
+type CameraPose = { position: THREE.Vector3, target: THREE.Vector3, zoom: number }
+type Handoff = { image: HTMLCanvasElement, isFading: boolean }
 type Props = {
   replay: Replay
   weatherAt: WeatherTimeline
@@ -42,22 +45,28 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid, isOrbiting })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
   const captureRef = useRef<() => SceneCapture | null>(() => null)
+  const cameraPoseRef = useRef<() => CameraPose | null>(() => null)
+  const snapshotRef = useRef<() => HTMLCanvasElement | null>(() => null)
+  // Changing quality rebuilds the scene; this carries the camera over so only the graphics change.
+  const poseToRestoreRef = useRef<CameraPose | null>(null)
   const [view, setView] = useState<'overview' | 'top'>('overview')
   const [quality, setQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
   const [error, setError] = useState<string | null>(null)
+  const [handoff, setHandoff] = useState<Handoff | null>(null)
 
   useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, showStartingGrid, isOrbiting } }, [selectedDriver, hoveredDriver, showStartingGrid, isOrbiting])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const { scene, overlay, cars, locations, project, width, depth, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = buildCircuit(replay, circuit, weatherAt, quality)
+    const { scene, overlay, cars, locations, project, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = buildCircuit(replay, circuit, weatherAt, quality)
     const camera = new THREE.OrthographicCamera(-130, 130, 100, -100, 0.1, 1000)
     let pipeline: ReturnType<typeof createSceneRenderer>
     try {
       pipeline = createSceneRenderer(scene, overlay, camera, quality)
     } catch {
       setError('The 3D view needs WebGL. Try a browser with hardware acceleration enabled. Race timing and playback are still available.')
+      setHandoff(null)
       onSceneReady(true)
       return
     }
@@ -80,15 +89,27 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     controls.enableDamping = !isReducedMotion
     controls.dampingFactor = 0.12
     controls.listenToKeyEvents(canvas)
+    const defaultYaw = startStraightViewYaw(track)
+    const { width, depth } = circuitViewExtent(track, defaultYaw)
     const resetCamera = (top: boolean) => {
       controls.target.set(0, 0, 0)
-      camera.position.set(top ? 0 : 15, top ? 240 : 185, top ? 0.01 : 145)
+      camera.position.set(top ? 0 : 15, top ? 240 : 185, top ? 0.01 : 145).applyAxisAngle(camera.up, defaultYaw)
       camera.zoom = 1.15
       camera.lookAt(controls.target)
       camera.updateProjectionMatrix()
       controls.update()
     }
     resetCamera(false)
+    const poseToRestore = poseToRestoreRef.current
+    poseToRestoreRef.current = null
+    if (poseToRestore) {
+      controls.target.copy(poseToRestore.target)
+      camera.position.copy(poseToRestore.position)
+      camera.zoom = poseToRestore.zoom
+      camera.updateProjectionMatrix()
+      controls.update()
+    }
+    cameraPoseRef.current = () => ({ position: camera.position.clone(), target: controls.target.clone(), zoom: camera.zoom })
     actionRef.current = (action) => {
       if (action === 'overview' || action === 'top') resetCamera(action === 'top')
       if (action === 'locate' && optionsRef.current.selectedDriver !== null) {
@@ -146,6 +167,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     let lastLook: FrameLook | null = null
     let orbitSeconds = 0
     captureRef.current = () => lastLook && { ...pipeline.capture(lastLook), bounds: container.getBoundingClientRect() }
+    snapshotRef.current = () => lastLook && pipeline.snapshot(lastLook)
     // Standard quality draws at most 30 frames a second, halving GPU work on high refresh screens.
     const minimumFrameMs = quality === 'high' ? 0 : STANDARD_FRAME_MS
     const animate = (now: number) => {
@@ -214,6 +236,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       if (!hasRendered) {
         hasRendered = true
         onSceneReady(true)
+        setHandoff((current) => current && !isReducedMotion ? { ...current, isFading: true } : null)
       }
       if (import.meta.env.DEV && now - lastDiagnostic > 1000) {
         container.dataset.renderStats = JSON.stringify({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: camera.zoom, polarAngle: controls.getPolarAngle(), isolated: activeHover, ghosts: [...ghosts].filter(([, ghost]) => ghost.visible).map(([number]) => number) })
@@ -254,11 +277,16 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       pipeline.dispose()
       actionRef.current = () => {}
       captureRef.current = () => null
+      cameraPoseRef.current = () => null
+      snapshotRef.current = () => null
     }
   }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, onSceneReady, quality])
 
   const toggleQuality = () => {
     const next = quality === 'high' ? 'standard' : 'high'
+    poseToRestoreRef.current = cameraPoseRef.current()
+    const image = snapshotRef.current()
+    setHandoff(image && { image, isFading: false })
     setQuality(next)
     saveGraphicsQuality(next)
   }
@@ -275,6 +303,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
 
   return <>
     <div className="track-canvas" ref={containerRef} />
+    {handoff && <SceneHandoff image={handoff.image} isFading={handoff.isFading} onFaded={() => setHandoff(null)} />}
     {error && <div className="scene-error" role="alert">{error}</div>}
     {selectedDriver !== null && <button className="locate-driver" type="button" disabled={showStartingGrid ? !replay.startingGrid.some(([driver]) => driver === selectedDriver) : !carLocation(replay.locations[String(selectedDriver)] ?? [], timeRef.current) || stoppedAt(stops.get(selectedDriver) ?? [], timeRef.current) !== null} onClick={() => actionRef.current('locate')}>⌖ Locate driver</button>}
     <div className="camera-toolbar" aria-label="Camera controls" role="group">

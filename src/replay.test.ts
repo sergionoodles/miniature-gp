@@ -15,6 +15,17 @@ describe('carLocation', () => {
     expect(carLocation(samples, 0)).toBeNull()
     expect(carLocation(samples, 0, true)).toEqual({ x: 4, y: 6, heading: Math.atan2(1, 1) })
   })
+
+  it('keeps a stopped car facing the way it was travelling', () => {
+    const samples: [number, number, number][] = [[0, 0, 0], [1, 100, 100], [2, 100, 100], [3, 101, 100], [4, 100, 100]]
+    expect(carLocation(samples, 2.5)?.heading).toBeCloseTo(Math.atan2(1, 1))
+    expect(carLocation(samples, 3.5)?.heading).toBeCloseTo(Math.atan2(1, 1))
+  })
+
+  it('faces a car that has not moved yet the way it leaves', () => {
+    const samples: [number, number, number][] = [[0, 50, 50], [1, 50, 50], [2, 150, 50]]
+    expect(carLocation(samples, 0.5)?.heading).toBeCloseTo(Math.atan2(1, 0))
+  })
 })
 
 it('marks only drivers at least one completed lap behind the leader', () => {

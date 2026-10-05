@@ -50,6 +50,9 @@ select { border: 1px solid var(--hud-border); border-radius: 5px; background: va
 .race-stage { position: absolute; inset: 0; flex: 1; min-width: 0; overflow: hidden; background: #09151f; }
 .track-canvas { position: absolute; inset: 0; }
 .track-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.scene-handoff { position: absolute; inset: 0; pointer-events: none; transition: opacity 450ms ease-out, filter 450ms ease-out; }
+.scene-handoff.is-fading { opacity: 0; filter: blur(8px); }
+.scene-handoff canvas { display: block; width: 100%; height: 100%; }
 .stage-placeholder, .scene-error { position: absolute; inset: 0; display: grid; place-content: center; padding: 40px; text-align: center; font-size: 16px; line-height: 1.6; }
 .scene-error { background: #09151f; z-index: 1; }
 .race-loader { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px 24px; text-align: center; background: radial-gradient(ellipse at 50% 45%, #172834 0, #0b1821 48%, #071018 100%); }

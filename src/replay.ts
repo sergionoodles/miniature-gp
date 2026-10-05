@@ -68,6 +68,31 @@ export function latestAt<T extends [number, ...unknown[]]>(events: T[], time: nu
   return low ? events[low - 1] : null
 }
 
+// Telemetry units are about a decimetre. A standing car repeats its fix, which has no direction,
+// so its heading comes from the nearest movement before (or, on the grid, after) the stop.
+const MIN_HEADING_DISTANCE = 5
+
+function headingBetween(from: LocationSample, to: LocationSample) {
+  return Math.atan2(to[1] - from[1], to[2] - from[2])
+}
+
+function isMovementBetween(from: LocationSample, to: LocationSample) {
+  return Math.hypot(to[1] - from[1], to[2] - from[2]) >= MIN_HEADING_DISTANCE
+}
+
+function travelHeading(samples: LocationSample[], beforeIndex: number, afterIndex: number) {
+  const before = samples[beforeIndex]
+  const after = samples[afterIndex]
+  if (isMovementBetween(before, after)) return headingBetween(before, after)
+  for (let index = beforeIndex - 1; index >= 0; index--) {
+    if (isMovementBetween(samples[index], before)) return headingBetween(samples[index], before)
+  }
+  for (let index = afterIndex + 1; index < samples.length; index++) {
+    if (isMovementBetween(after, samples[index])) return headingBetween(after, samples[index])
+  }
+  return headingBetween(before, after)
+}
+
 export function carLocation(samples: LocationSample[], time: number, holdFirstSample = false): { x: number; y: number; heading: number } | null {
   if (!samples.length || (time < samples[0][0] && !holdFirstSample) || time > samples[samples.length - 1][0] + 3) return null
   const sampleTime = Math.max(time, samples[0][0])
@@ -78,14 +103,16 @@ export function carLocation(samples: LocationSample[], time: number, holdFirstSa
     if (samples[middle][0] <= sampleTime) low = middle + 1
     else high = middle
   }
-  const before = samples[Math.max(0, low - 1)]
-  const after = samples[Math.min(samples.length - 1, low)]
+  const beforeIndex = Math.max(0, low - 1)
+  const afterIndex = Math.min(samples.length - 1, low)
+  const before = samples[beforeIndex]
+  const after = samples[afterIndex]
   if (after[0] - before[0] > 5) return null
   const fraction = before === after ? 0 : Math.max(0, Math.min(1, (sampleTime - before[0]) / (after[0] - before[0])))
   return {
     x: before[1] + (after[1] - before[1]) * fraction,
     y: before[2] + (after[2] - before[2]) * fraction,
-    heading: Math.atan2(after[1] - before[1], after[2] - before[2]),
+    heading: travelHeading(samples, beforeIndex, afterIndex),
   }
 }
 

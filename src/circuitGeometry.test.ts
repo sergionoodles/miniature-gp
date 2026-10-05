@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createProjection, createRibbonGeometry, createUnprojection, interpolateStartPose, roadSideRoom, startingGridLocations } from './circuitGeometry'
+import { CIRCUIT_MARGIN, circuitViewExtent, createProjection, createRibbonGeometry, createUnprojection, interpolateStartPose, roadSideRoom, startingGridLocations, startStraightViewYaw } from './circuitGeometry'
 import { Vector3 } from 'three'
+
+const UP = new Vector3(0, 1, 0)
 
 describe('circuit projection', () => {
   it('preserves distances on both axes and centers the circuit', () => {
@@ -115,4 +117,30 @@ it('keeps the camera target centered in the unobscured viewport at every zoom', 
   }
   frameCircuitCameraInPlace(camera, 390, 500, 180, 110, 0)
   expect(new Vector3().project(camera).x).toBeCloseTo(0)
+})
+
+describe('default circuit view', () => {
+  // A 100 by 20 oval; the lap starts at index 0, reached from the last point.
+  const oval = [new Vector3(-50, 0, 10), new Vector3(-50, 0, -10), new Vector3(50, 0, -10), new Vector3(50, 0, 10)]
+  const turnedOval = (yaw: number) => oval.map((point) => point.clone().applyAxisAngle(UP, yaw))
+
+  it('keeps a start straight that already runs across the screen', () => {
+    expect(startStraightViewYaw(oval)).toBeCloseTo(0)
+    expect(circuitViewExtent(oval, 0)).toEqual({ width: 100 + CIRCUIT_MARGIN, depth: 20 + CIRCUIT_MARGIN })
+  })
+
+  it('turns the camera so a start straight running into the screen lies across it', () => {
+    const track = turnedOval(Math.PI / 2)
+    const yaw = startStraightViewYaw(track)
+    const forward = track[0].clone().sub(track[track.length - 1]).applyAxisAngle(UP, -yaw)
+    expect(forward.z).toBeCloseTo(0)
+    const extent = circuitViewExtent(track, yaw)
+    expect(extent.width).toBeCloseTo(100 + CIRCUIT_MARGIN)
+    expect(extent.depth).toBeCloseTo(20 + CIRCUIT_MARGIN)
+  })
+
+  it('takes the smaller of the two turns that lay the straight across', () => {
+    expect(startStraightViewYaw(turnedOval(Math.PI * 0.8))).toBeCloseTo(Math.PI * -0.2)
+    expect(startStraightViewYaw(turnedOval(Math.PI * 0.1))).toBeCloseTo(Math.PI * 0.1)
+  })
 })
