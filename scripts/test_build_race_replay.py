@@ -72,6 +72,20 @@ class RaceEventsTest(unittest.TestCase):
         self.assertEqual(result["startingGrid"], [[2, 1], [1, 2]])
         self.assertEqual(result["startingGridSource"], "position")
 
+    def test_excludes_withdrawn_drivers_without_renumbering_grid_positions(self):
+        grid = [{"driver_number": 1, "position": 1},
+                {"driver_number": 18, "position": 2},
+                {"driver_number": 2, "position": 3}]
+        result = with_race_events(self.replay, grid, [])
+        self.assertEqual(result["startingGrid"], [[1, 1], [2, 3]])
+        self.assertEqual(result["startingGridSource"], "starting_grid")
+        self.assertEqual(grid[1], {"driver_number": 18, "position": 2})
+
+    def test_falls_back_when_grid_has_no_race_participants(self):
+        result = with_race_events(self.replay, [{"driver_number": 18, "position": 1}], [])
+        self.assertEqual(result["startingGrid"], [[2, 1], [1, 2]])
+        self.assertEqual(result["startingGridSource"], "position")
+
     def test_rejects_duplicate_grid_positions(self):
         grid = [{"driver_number": 1, "position": 1}, {"driver_number": 2, "position": 1}]
         with self.assertRaises(ValueError):

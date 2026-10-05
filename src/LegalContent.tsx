@@ -61,7 +61,7 @@ export function PrivacyContent() {
       </section>
       <section>
         <h2>Browser storage and photos</h2>
-        <p>The game stores your graphics-quality choice in your browser’s local storage under <code>miniature-gp:graphics-quality</code>. This preference stays until you change it or clear the site’s browser data. It is not sent as an analytics event. The app and Umami integration do not set tracking cookies.</p>
+        <p>The game stores your graphics-quality and sound choices in your browser’s local storage under <code>miniature-gp:graphics-quality</code> and <code>miniature-gp:sound</code>. These preferences stay until you change them or clear the site’s browser data. They are not sent as analytics events. The app and Umami integration do not set tracking cookies.</p>
         <p>Replay photos are generated in your browser. Downloading saves an image to your device; copying writes it to your clipboard when you request it and your browser allows it. These features do not upload the generated image to us.</p>
       </section>
       <section>

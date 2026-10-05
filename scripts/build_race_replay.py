@@ -87,13 +87,16 @@ def with_session_metadata(replay, session):
 def with_race_events(replay, grid_rows, overtake_rows):
     driver_numbers = {driver["number"] for driver in replay["drivers"]}
     initial_positions = {driver: position for time, driver, position in replay["positions"] if time == 0}
-    grid = {row["driver_number"]: row["position"] for row in grid_rows}
+    # Qualifying can include drivers who withdraw before the race.
+    grid = {row["driver_number"]: row["position"] for row in grid_rows
+            if row["driver_number"] in driver_numbers}
+    grid_source = "starting_grid" if grid else "position"
     if not grid:
         grid = initial_positions
         if set(grid) != driver_numbers:
             raise ValueError("Initial positions are missing drivers")
-    if not set(grid) <= driver_numbers or len(set(grid.values())) != len(grid):
-        raise ValueError("Starting grid has unknown drivers or duplicate positions")
+    if len(set(grid.values())) != len(grid):
+        raise ValueError("Starting grid has duplicate positions")
 
     start = milliseconds(replay["start"])
     end = start + round(replay["duration"] * 1000)
@@ -105,7 +108,7 @@ def with_race_events(replay, grid_rows, overtake_rows):
         and row["overtaken_driver_number"] in driver_numbers
     ])
     return {**replay, "startingGrid": sorted([[driver, position] for driver, position in grid.items()], key=lambda row: row[1]),
-            "startingGridSource": "starting_grid" if grid_rows else "position", "overtakes": overtakes}
+            "startingGridSource": grid_source, "overtakes": overtakes}
 
 
 def fetch_starting_grid(session):
