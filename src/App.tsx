@@ -514,7 +514,7 @@ export default function App() {
           <div className="panel-heading">
             <div>
               <span className="section-title">{isBeforeLaunch ? 'Starting order' : 'Running order'}</span>
-              <span className="section-note">{race.circuit.replace('Circuit ', '')}</span>
+              <span className="section-note">{race.circuit.replace('Circuit ', '')} · {formatRaceDate(race.date)}</span>
             </div>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
             <button className="order-close" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)}>×</button>
