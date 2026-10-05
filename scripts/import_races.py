@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -12,6 +13,10 @@ from build_race_replay import DATA_DIRECTORY, build_replay, fetch
 
 
 FIRST_AVAILABLE_YEAR = 2023
+ISO_COUNTRY_CODES = {
+    "BRN": "BHR", "NED": "NLD", "KSA": "SAU", "UAE": "ARE",
+    "MON": "MCO", "MAS": "MYS",
+}
 COUNTRY_CODES = {
     "Australia": "AUS", "Austria": "AUT", "Azerbaijan": "AZE", "Bahrain": "BRN",
     "Belgium": "BEL", "Brazil": "BRA", "Canada": "CAN", "China": "CHN",
@@ -47,7 +52,7 @@ def race_entry(session, meeting, replay, filename, year):
 
 def existing_replays(directory, year):
     replays = {}
-    for path in (directory / str(year)).glob(f"*-{year}.json"):
+    for path in (directory / str(year)).glob("*.[jJ][sS][oO][nN]"):
         if path.name == f"races-{year}.json":
             continue
         replay = json.loads(path.read_text())
@@ -150,7 +155,10 @@ def run_import(directory=DATA_DIRECTORY, now=None, year=None, catalog_only=False
             if not any(row.get("number_of_laps") for row in results):
                 print(f"Waiting for results: {meeting['meeting_name']} ({session_key})", flush=True)
                 continue
-            path = year_directory / f"race-{session_key}-{year}.json"
+            circuit = re.sub(r"[^A-Z0-9]+", "-", session["circuit_short_name"].upper()).strip("-")
+            country_code = session["country_code"].upper()
+            country = ISO_COUNTRY_CODES.get(country_code, country_code)
+            path = year_directory / f"{local_race_date(session)}-{country}-{circuit}-{session_key}.json"
             year_directory.mkdir(parents=True, exist_ok=True)
             print(f"Importing {meeting['meeting_name']} ({session_key})", flush=True)
             total_laps = max(row["number_of_laps"] for row in results if row.get("number_of_laps"))

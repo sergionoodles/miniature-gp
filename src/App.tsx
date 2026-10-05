@@ -4,6 +4,7 @@ import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCar
 import { TrackScene } from './TrackScene'
 import { PhotoReview } from './PhotoReview'
 import { RaceResults } from './RaceResults'
+import { RaceStartLights, START_LIGHT_COUNT, START_LIGHT_INTERVAL } from './RaceStartLights'
 import { raceResults } from './raceResults'
 import { nextRaceAfter, nextSeason } from './nextRace'
 import type { RacePhotoHud, SceneCapture } from './racePhoto'
@@ -27,6 +28,7 @@ const formatRaceDate = (date: string) => {
 }
 const SPEEDS = [1, 2, 5, 10, 25, 50, 100]
 const DEFAULT_SPEED = 10
+const SKIP_SECONDS = 60
 const NOTIFICATION_DURATION = 6000
 const LOADER_STEP_DURATION = 500
 const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
@@ -244,7 +246,7 @@ export default function App() {
       setHasStarted(true)
       isPlayingRef.current = true
       setIsPlaying(true)
-    }, 1000)
+    }, START_LIGHT_INTERVAL)
     return () => window.clearTimeout(timeout)
   }, [countdown])
 
@@ -272,7 +274,7 @@ export default function App() {
       setTime(0)
     }
     if (playing && timeRef.current === 0) {
-      setCountdown(3)
+      setCountdown(START_LIGHT_COUNT)
       return
     }
     isPlayingRef.current = playing
@@ -291,6 +293,11 @@ export default function App() {
       setPlayback(false)
       setIsResultsOpen(true)
     }
+  }
+
+  const skip = (seconds: number) => {
+    if (!replay) return
+    seek(Math.min(replay.duration, Math.max(0, timeRef.current + seconds)))
   }
 
   const changeSpeed = (nextSpeed: number) => {
@@ -438,7 +445,7 @@ export default function App() {
           <div className="panel-heading">
             <div>
               <span className="section-title">{isBeforeLaunch ? 'Starting order' : 'Running order'}</span>
-              <span className="section-note">{race.circuit.replace('Circuit ', '')} · {formatRaceDate(race.date)}</span>
+              <span className="section-note">{race.circuit.replace('Circuit ', '')}</span>
             </div>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
             <button className="order-close" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)}>×</button>
@@ -498,7 +505,7 @@ export default function App() {
             </div>)}
           </div>
           {replay && (!hasStarted || countdown !== null) && <div className="race-start-hud">
-            {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start replay</button> : <div className="race-start-countdown" role="status" aria-live="polite"><span>REPLAY START</span><strong>{countdown}</strong><div className={`start-lights step-${4 - countdown}`} aria-hidden="true"><i /><i /><i /></div></div>}
+            {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start replay</button> : <RaceStartLights countdown={countdown} />}
           </div>}
           {replay && !unavailable && !isResultsOpen && time >= replay.duration && <div className="race-start-hud">
             <button className="race-start-button" type="button" onClick={() => setIsResultsOpen(true)}><span className="results-button-flag" aria-hidden="true" /> Race results</button>
@@ -515,9 +522,13 @@ export default function App() {
 
       <footer className="transport">
         <div className="replay-label"><span className="section-eyebrow">SESSION REPLAY</span><strong>{countdown !== null ? 'Starting' : isPlaying ? 'Playing' : 'Paused'} <span className={isPlaying ? 'playback-dot active' : 'playback-dot'} /></strong></div>
-        <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(countdown === null && !isPlaying)} aria-label={countdown !== null ? 'Cancel race start' : isPlaying ? 'Pause replay' : 'Play replay'}>
-          {isPlaying || countdown !== null ? <span className="pause-icon" /> : <span className="play-icon" />}
-        </button>
+        <div className="transport-controls">
+          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(-SKIP_SECONDS)} aria-label="Back 1 minute" title="Back 1 minute"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 9a1 1 0 0 1-1-1V4.707a.707.707 0 0 0-1.207-.5l-6.94 6.94a1.207 1.207 0 0 0 0 1.707l6.94 6.94a.707.707 0 0 0 1.207-.5V16a1 1 0 0 1 1-1h2a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1z" /><path d="M20 9v6" /></svg></button>
+          <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(countdown === null && !isPlaying)} aria-label={countdown !== null ? 'Cancel race start' : isPlaying ? 'Pause replay' : 'Play replay'}>
+            {isPlaying || countdown !== null ? <span className="pause-icon" /> : <span className="play-icon" />}
+          </button>
+          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(SKIP_SECONDS)} aria-label="Forward 1 minute" title="Forward 1 minute"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 9a1 1 0 0 0 1-1V4.707a.707.707 0 0 1 1.207-.5l6.94 6.94a1.207 1.207 0 0 1 0 1.707l-6.94 6.94a.707.707 0 0 1-1.207-.5V16a1 1 0 0 0-1-1H9a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" /><path d="M4 9v6" /></svg></button>
+        </div>
         <div className="timeline-wrap">
           <div className="time-labels"><span>{clockLabel(time)}</span><span>{replay ? clockLabel(replay.duration) : '00:00:00'}</span></div>
           <input className="timeline" type="range" aria-label="Replay position" min="0" max={replay?.duration ?? 1} step="0.1" value={time} disabled={!replay} onChange={(event) => seek(Number(event.target.value))} style={{ '--progress': `${replay ? time / replay.duration * 100 : 0}%` } as React.CSSProperties} />
