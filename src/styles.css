@@ -14,7 +14,7 @@ button { transition: background .15s, color .15s; }
 .identity { display: flex; align-items: center; gap: 15px; }
 .identity-mark { width: 42px; height: 42px; object-fit: cover; border-radius: 8px; }
 .app-name { font-weight: 650; font-size: 18px; letter-spacing: 1.4px; text-transform: uppercase; }
-.app-subtitle { font-size: 13px; color: var(--hud-muted); margin-top: 0; letter-spacing: .3px; }
+.app-subtitle { font-size: 14px; color: var(--hud-muted); margin-top: 0; letter-spacing: .3px; }
 .race-picker { display: flex; gap: 22px; }
 .race-picker label, .speed-picker { display: grid; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--hud-muted); }
 select { border: 1px solid var(--hud-border); border-radius: 5px; background: var(--hud-background); min-height: 36px; padding: 6px 28px 6px 10px; color: #fff; font-size: 12px; font-weight: 600; letter-spacing: 0; }
@@ -105,12 +105,11 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .race-start-hud { position: absolute; top: 50%; left: calc(50% + 143px); transform: translate(-50%, -50%); z-index: 1; }
 .race-start-button { display: flex; align-items: center; gap: 12px; white-space: nowrap; border: 1px solid #fff; border-radius: 7px; padding: 17px 24px; background: #f3f5f5; color: #111a22; font-size: 15px; font-weight: 700; box-shadow: 0 8px 32px #0009; }
 .race-start-button:hover { background: #dce2e4; }
-.race-start-countdown { min-width: 130px; display: grid; justify-items: center; gap: 8px; border: 1px solid var(--hud-border); border-radius: 7px; padding: 14px 24px; background: var(--hud-background); box-shadow: 0 8px 32px #0009; }
+.race-start-countdown { display: grid; justify-items: center; gap: 16px; border: 1px solid var(--hud-border); border-radius: 7px; padding: 18px 24px; background: var(--hud-background); box-shadow: 0 8px 32px #0009; }
 .race-start-countdown > span { font-family: monospace; font-size: 10px; letter-spacing: 2px; color: var(--hud-muted); }
-.race-start-countdown strong { font-family: monospace; font-size: 42px; line-height: 1; color: #fff; }
-.start-lights { display: flex; gap: 8px; }
-.start-lights i { width: 12px; height: 12px; border-radius: 50%; background: #394954; }
-.start-lights.step-1 i:first-child, .start-lights.step-2 i:nth-child(-n+2), .start-lights.step-3 i { background: #f16b59; box-shadow: 0 0 10px #f16b59; }
+.start-lights { display: flex; gap: 10px; padding: 12px; border: 1px solid #35414b; border-radius: 5px; background: #080c10; }
+.start-lights i { width: clamp(24px, 4vw, 36px); height: clamp(24px, 4vw, 36px); border: 2px solid #30343a; border-radius: 50%; background: #281013; box-shadow: inset 0 2px 6px #000; }
+.start-lights i.illuminated { border-color: #ff4545; background: #ff2020; box-shadow: 0 0 14px #ff202099, inset 0 0 8px #ff8989; }
 .transport { display: flex; align-items: center; flex: 0 0 88px; padding: 0 30px; gap: 24px; background: #0c141ce8; backdrop-filter: blur(18px); border-top: 1px solid var(--hud-border); z-index: 2; }
 .app-footer { flex: 0 0 32px; display: flex; align-items: center; justify-content: center; gap: 6px; border-top: 1px solid var(--hud-border); background: #0c141ce8; color: var(--hud-muted); font-size: 11px; letter-spacing: .3px; }
 .app-footer a { color: #edf1f3; }
@@ -155,6 +154,10 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .playback-dot.active { background: #fff; }
 .play-button { width: 46px; height: 46px; flex: 0 0 46px; display: grid; place-items: center; border: 0; border-radius: 50%; background: #f3f5f5; color: #111a22; }
 .play-button:hover { background: #dce2e4; }
+.transport-controls { display: flex; align-items: center; gap: 10px; }
+.skip-button { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--hud-border); border-radius: 50%; background: transparent; color: #f3f5f5; }
+.skip-icon { width: 18px; height: 18px; }
+.skip-button:hover:not(:disabled) { background: #ffffff1c; }
 .play-icon { width: 0; height: 0; margin-left: 3px; border-block: 8px solid transparent; border-left: 12px solid #111a22; }
 .pause-icon { width: 13px; height: 16px; border-inline: 4px solid #111a22; }
 .timeline-wrap { flex: 1; min-width: 0; }
@@ -167,6 +170,10 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .timeline::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; margin-top: -4.5px; border-radius: 50%; border: 2px solid #111a22; background: #f3f5f5; box-shadow: 0 0 0 1px #f3f5f5; }
 .timeline::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #111a22; background: #f3f5f5; }
 .speed-picker { flex: 0 0 78px; }
+@media (min-width: 1101px) {
+  .race-picker label:last-child { flex: 0 0 460px; width: 460px; min-width: 0; }
+  .race-picker label:last-child select { width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+}
 @media (max-width: 1100px) {
   .order-panel { width: 268px; }
   .driver-row { gap: 6px; padding-inline: 10px; }
@@ -183,7 +190,7 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .app-name { font-size: 20px; }
   .race-picker { width: 100%; gap: 12px; }
   .race-picker label:last-child { flex: 1; min-width: 0; }
-  .race-picker select { width: 100%; min-height: 44px; }
+  .race-picker select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .workspace { flex-direction: column-reverse; }
   .race-stage { position: relative; inset: auto; flex: none; height: clamp(430px, calc(100svh - 265px), 600px); }
   .order-toggle { position: absolute; display: grid; place-items: center; top: 8px; left: 8px; width: 40px; height: 40px; border: 1px solid var(--hud-border); border-radius: 5px; background: var(--hud-background); backdrop-filter: blur(12px); font-size: 18px; z-index: 5; }
@@ -199,9 +206,11 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .stage-conditions { top: 8px; right: 8px; left: auto; transform: none; max-width: 100%; }
   .notification-stack { display: none; }
   .camera-toolbar { bottom: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; flex-wrap: nowrap; gap: 4px; }
-  .camera-toolbar .view-switch:has(.photo-button) { display: none; }
-  .camera-toolbar button { min-width: 38px; min-height: 44px; }
+  .camera-toolbar .view-switch:has(.photo-button), .camera-toolbar .camera-views { display: none; }
+  .camera-toolbar .view-switch, .camera-toolbar .zoom-controls { padding: 3px; }
+  .camera-toolbar button { min-width: 38px; min-height: 32px; }
   .view-switch button { padding: 0 6px; }
+  .camera-toolbar .sound-button { justify-content: center; }
   .view-switch span { font-size: 10px; white-space: nowrap; }
   .zoom-controls button:nth-child(-n+2) { display: none; }
   .stage-bottomline { display: none; }
@@ -215,6 +224,7 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .transport { position: sticky; bottom: 0; flex-basis: auto; min-height: 85px; padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); gap: 14px; }
   .app-footer .telemetry-credits { display: none; }
   .replay-label { display: none; }
+  .skip-button { display: none; }
   .speed-picker { flex-basis: 65px; }
   .speed-picker select { padding-right: 4px; }
 }
@@ -236,7 +246,9 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
 .unavailable-panel p { color: var(--hud-muted); margin: 0 0 22px; }
 .unavailable-panel button { min-height: 42px; padding: 0 18px; border: 1px solid #dce4e55c; border-radius: 5px; background: #edf1f3; color: #111a22; font-weight: 700; }
 
-.camera-toolbar .photo-button svg { width: 17px; height: 17px; }
+.camera-toolbar .photo-button svg, .camera-toolbar .sound-button svg { width: 17px; height: 17px; }
+/* Keeps the sound highlight apart from the graphics highlight when both are on. */
+.camera-toolbar .sound-button { margin-left: 4px; }
 .photo-review[open] { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 32px; border: 0; background: transparent; color: inherit; display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 28px; align-items: center; overflow: auto; }
 .photo-review::backdrop { background: #04080cd9; backdrop-filter: blur(8px); animation: photo-fade-in .5s ease .25s both; }
 .photo-frame { --photo-max-height: calc(100dvh - 64px); position: relative; justify-self: center; width: min(100%, calc(var(--photo-max-height) * var(--photo-ratio))); aspect-ratio: var(--photo-ratio); overflow: hidden; border-radius: 6px; background: #09151f; box-shadow: 0 0 0 1px #ffffff2e, 0 26px 70px #000c; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { carLocation, isReplay, lappedDriversAt, notificationsBetween, raceStatus, type RaceEvent, type Replay } from './replay'
+import { carLocation, isReplay, lappedDriversAt, notificationsBetween, racePositionsAt, raceStatus, type RaceEvent, type Replay } from './replay'
 
 describe('carLocation', () => {
   it('interpolates car movement at replay time', () => {
@@ -43,6 +43,117 @@ it('shows the red flag until the session resumes', () => {
   ]
   expect(raceStatus(events, 15)).toBe('Red flag')
   expect(raceStatus(events, 31)).toBe('Racing')
+})
+
+it('keeps the formation and standing-start phases until telemetry confirms the launch', () => {
+  const events: RaceEvent[] = [
+    [-300, 'StartPhase', null, 'Delayed start'],
+    [-5, 'StartPhase', null, 'Formation lap'],
+    [0, 'SessionStatus', null, 'SESSION STARTED'],
+    [217, 'Other', null, 'STANDING START'],
+    [217, 'StartPhase', null, 'Waiting for start'],
+    [392, 'StartPhase', null, 'Racing'],
+    [1000, 'SafetyCar', null, 'SAFETY CAR DEPLOYED'],
+    [2000, 'SessionStatus', null, 'SESSION FINISHED'],
+  ]
+  expect(raceStatus(events, 0)).toBe('Formation lap')
+  expect(raceStatus(events, 216)).toBe('Formation lap')
+  expect(raceStatus(events, 218)).toBe('Waiting for start')
+  expect(raceStatus(events, 391)).toBe('Waiting for start')
+  expect(raceStatus(events, 393)).toBe('Racing')
+  expect(raceStatus(events, 1001)).toBe('Safety car')
+  expect(raceStatus(events, 2001)).toBe('Finished')
+  expect(raceStatus(events, 50)).toBe('Formation lap')
+})
+
+it('shows a suspended start and waits for a corroborated restart', () => {
+  const events: RaceEvent[] = [
+    [0, 'StartPhase', null, 'Formation lap'],
+    [10, 'StartPhase', null, 'Start suspended'],
+    [20, 'SessionStatus', null, 'SESSION STARTED'],
+    [20, 'StartPhase', null, 'Waiting for start'],
+    [30, 'StartPhase', null, 'Racing'],
+  ]
+  expect(raceStatus(events, 15)).toBe('Start suspended')
+  expect(raceStatus(events, 25)).toBe('Waiting for start')
+  expect(raceStatus(events, 31)).toBe('Racing')
+})
+
+it('does not treat Safety Car withdrawal as a telemetry-confirmed rolling start', () => {
+  const events: RaceEvent[] = [
+    [0, 'StartPhase', null, 'Formation lap'],
+    [90, 'SafetyCar', null, 'SAFETY CAR DEPLOYED'],
+    [95, 'SafetyCar', null, 'SAFETY CAR IN THIS LAP'],
+    [100, 'StartPhase', null, 'Racing'],
+  ]
+  expect(raceStatus(events, 91)).toBe('Formation lap')
+  expect(raceStatus(events, 96)).toBe('Formation lap')
+  expect(raceStatus(events, 101)).toBe('Racing')
+})
+
+it('keeps a mid-race red flag distinct from a suspended initial start', () => {
+  const events: RaceEvent[] = [
+    [0, 'StartPhase', null, 'Racing'],
+    [10, 'SessionStatus', null, 'SESSION ABORTED'],
+    [10, 'StartPhase', null, 'Start suspended'],
+    [20, 'SessionStatus', null, 'SESSION STARTED'],
+    [20, 'StartPhase', null, 'Waiting for start'],
+    [30, 'StartPhase', null, 'Racing'],
+  ]
+  expect(raceStatus(events, 15)).toBe('Red flag')
+  expect(raceStatus(events, 25)).toBe('Waiting for start')
+  expect(raceStatus(events, 31)).toBe('Racing')
+})
+
+it('announces the confirmed launch without announcing historical pre-start events', () => {
+  const replay = { drivers: [], overtakes: [], pits: [], weather: [], raceControl: [
+    [-20, 'StartPhase', null, 'Delayed start'],
+    [10, 'StartPhase', null, 'Waiting for start'],
+    [30, 'StartPhase', null, 'Racing'],
+  ] } as unknown as Replay
+  expect(notificationsBetween(replay, 0, 31).map(({ title }) => title)).toEqual(['Waiting for start', 'Racing begins'])
+})
+
+it('holds the official grid until launch and excludes pre-launch position artifacts', () => {
+  const replay = {
+    startingGrid: [[3, 1], [44, 2], [12, 3]],
+    positions: [[0, 3, 1], [0, 44, 2], [0, 12, 3], [20, 3, 3], [20, 12, 1], [31, 12, 2]],
+    raceControl: [[0, 'StartPhase', null, 'Formation lap'], [30, 'StartPhase', null, 'Racing']],
+  } satisfies Pick<Replay, 'startingGrid' | 'positions' | 'raceControl'>
+  expect(racePositionsAt(replay, 29)).toEqual(new Map([[3, 1], [44, 2], [12, 3]]))
+  expect(racePositionsAt(replay, 30).get(3)).toBe(1)
+  expect(racePositionsAt(replay, 31).get(12)).toBe(2)
+  expect(racePositionsAt(replay, 31).get(3)).toBe(1)
+  expect(racePositionsAt(replay, 20).get(12)).toBe(3)
+  expect(racePositionsAt({ ...replay, raceControl: [] }, 29).get(12)).toBe(1)
+})
+
+it.each(['Delayed start', 'Formation lap', 'Start suspended', 'Waiting for start'])(
+  'suppresses overtake notifications during %s, including restarts',
+  (phase) => {
+    const replay = {
+      drivers: [], pits: [], weather: [],
+      overtakes: [[5, 12, 63, 1], [15, 12, 63, 1], [20, 12, 63, 1], [25, 12, 63, 1], [35, 12, 63, 1], [45, 12, 63, 1]],
+      raceControl: [
+        [10, 'StartPhase', null, phase],
+        [12, 'SessionStatus', null, 'SESSION STARTED'],
+        [20, 'StartPhase', null, 'Racing'],
+        [30, 'StartPhase', null, phase],
+        [40, 'StartPhase', null, 'Racing'],
+      ],
+    } as unknown as Replay
+    const overtakes = notificationsBetween(replay, 0, 50).filter(({ id }) => id.startsWith('overtake-'))
+    expect(overtakes.map(({ time }) => time)).toEqual([20, 25, 45])
+    expect(notificationsBetween(replay, 0, 19).some(({ id }) => id.startsWith('overtake-'))).toBe(false)
+  },
+)
+
+it('suppresses overtakes when a start phase has no confirmed launch', () => {
+  const replay = {
+    drivers: [], pits: [], weather: [], overtakes: [[15, 12, 63, 1]],
+    raceControl: [[0, 'StartPhase', null, 'Formation lap']],
+  } as unknown as Replay
+  expect(notificationsBetween(replay, 0, 20).some(({ id }) => id.startsWith('overtake-'))).toBe(false)
 })
 
 it('requires grid and overtake data in a replay', () => {

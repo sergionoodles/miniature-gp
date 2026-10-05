@@ -1,4 +1,4 @@
-import { carLocation, latestAt, raceStatus, type LocationSample, type Replay } from './replay'
+import { carLocation, latestAt, raceStatus, START_PHASE_STATUSES, type LocationSample, type Replay } from './replay'
 
 export type StoppedInterval = [start: number, end: number, x: number, y: number]
 const STOP_SECONDS = 20
@@ -20,7 +20,7 @@ function isFieldMoving(replay: Replay, time: number) {
 
 function isStopCandidate(replay: Replay, driver: number, start: number, time: number) {
   const statuses = [raceStatus(replay.raceControl, start), raceStatus(replay.raceControl, time)]
-  if (statuses.some((status) => status === 'Red flag' || status === 'Finished')) return false
+  if (statuses.some((status) => status === 'Red flag' || status === 'Finished' || START_PHASE_STATUSES.includes(status))) return false
   const isPitStop = replay.pits.some(([exit, number, , duration]) =>
     number === driver && start <= exit + PIT_MARGIN && time >= exit - (duration ?? UNKNOWN_PIT_DURATION) - PIT_MARGIN)
   return !isPitStop && isFieldMoving(replay, time)

@@ -6,6 +6,8 @@ export type LapEvent = [time: number, driver: number, lap: number]
 export type PitEvent = [time: number, driver: number, lap: number, duration: number | null]
 export type WeatherEvent = [time: number, rainfall: number, air: number, track: number]
 export type RaceEvent = [time: number, category: string, flag: string | null, message: string]
+export type RaceLaunch = { time: number; drivers: number[]; source: 'car_data' }
+export const START_PHASE_STATUSES = ['Delayed start', 'Formation lap', 'Start suspended', 'Waiting for start']
 export type ReplayNotification = { id: string; time: number; title: string; detail: string; drivers?: [{ name: string; color: string }, { name: string; color: string }] }
 export const OVERTAKE_NOTIFICATION_CUTOFF = 50
 export type Stint = [driver: number, firstLap: number | null, lastLap: number | null, compound: string | null]
@@ -34,6 +36,7 @@ export type Replay = {
   pits: PitEvent[]
   weather: WeatherEvent[]
   raceControl: RaceEvent[]
+  raceLaunches?: RaceLaunch[]
   stints: Stint[]
 }
 
@@ -125,6 +128,20 @@ export function positionsAt(events: PositionEvent[], time: number): Map<number, 
   return positions
 }
 
+export function racePositionsAt(replay: Pick<Replay, 'raceControl' | 'startingGrid' | 'positions'>, time: number): Map<number, number> {
+  const launch = replay.raceControl.find(([, category, , message]) => category === 'StartPhase' && message === 'Racing')
+  if (!launch) return positionsAt(replay.positions, time)
+
+  const positions = new Map(replay.startingGrid)
+  for (const [eventTime, driver, position] of replay.positions) {
+    if (eventTime > time) break
+    // Timing checkpoints can put pit-lane runners ahead of cars still held on the grid.
+    if (eventTime < launch[0]) continue
+    positions.set(driver, position)
+  }
+  return positions
+}
+
 export function lapsAt(events: LapEvent[], time: number): Map<number, number> {
   const laps = new Map<number, number>()
   for (const [eventTime, driver, lap] of events) {
@@ -142,14 +159,23 @@ export function lappedDriversAt(events: LapEvent[], time: number): Set<number> {
 
 export function raceStatus(events: RaceEvent[], time: number): string {
   let status = 'Racing'
+  let hasStartPhases = false
+  let hasPendingStart = false
+  let hasRaced = false
   for (const [eventTime, category, , message] of events) {
     if (eventTime > time) break
+    if (category === 'StartPhase') {
+      hasStartPhases = true
+      hasPendingStart = message !== 'Racing'
+      status = message === 'Start suspended' && hasRaced ? 'Red flag' : message
+      hasRaced ||= message === 'Racing'
+    }
     if (category === 'SessionStatus') {
       if (message === 'SESSION ABORTED') status = 'Red flag'
-      if (message === 'SESSION STARTED') status = 'Racing'
+      if (message === 'SESSION STARTED' && !hasStartPhases) status = 'Racing'
       if (message === 'SESSION FINISHED') status = 'Finished'
     }
-    if (category === 'SafetyCar') {
+    if (category === 'SafetyCar' && !hasPendingStart) {
       if (message === 'SAFETY CAR DEPLOYED') status = 'Safety car'
       if (message === 'VSC DEPLOYED') status = 'Virtual safety car'
       if (message === 'VSC ENDING' || message === 'SAFETY CAR IN THIS LAP') status = 'Racing'
@@ -160,9 +186,13 @@ export function raceStatus(events: RaceEvent[], time: number): string {
 
 export function notificationsBetween(replay: Replay, from: number, to: number, speed = 10): ReplayNotification[] {
   const notifications: ReplayNotification[] = []
+  const startPhases = replay.raceControl.filter(([, category]) => category === 'StartPhase')
+  const hasStartPhases = startPhases.length > 0
   const drivers = new Map(replay.drivers.map((driver) => [driver.number, driver]))
   if (speed < OVERTAKE_NOTIFICATION_CUTOFF) replay.overtakes.forEach(([time, overtaking, overtaken, position], index) => {
     if (time <= from || time > to) return
+    const phase = startPhases.reduce<string | null>((current, [phaseTime, , , message]) => phaseTime <= time ? message : current, null)
+    if (hasStartPhases && phase !== 'Racing') return
     const overtakingDriver = drivers.get(overtaking)
     const overtakenDriver = drivers.get(overtaken)
     notifications.push({
@@ -178,9 +208,11 @@ export function notificationsBetween(replay: Replay, from: number, to: number, s
   })
   replay.raceControl.forEach(([time, category, flag, message], index) => {
     if (time <= from || time > to) return
-    const title = category === 'Flag' && flag ? `${flag[0]}${flag.slice(1).toLowerCase()} flag`
+    const phaseTitle = message === 'Racing' ? 'Racing begins' : message
+    const title = category === 'StartPhase' ? phaseTitle
+      : category === 'Flag' && flag ? `${flag[0]}${flag.slice(1).toLowerCase()} flag`
       : message === 'SESSION ABORTED' ? 'Race suspended'
-      : message === 'SESSION STARTED' && time > 0 ? 'Race resumed'
+      : message === 'SESSION STARTED' && time > 0 && !hasStartPhases ? 'Race resumed'
       : category === 'SafetyCar' ? message === 'VSC ENDING' ? 'Virtual safety car ending' : message.toLowerCase().replace(/^./, (letter) => letter.toUpperCase())
       : null
     if (title) notifications.push({ id: `control-${index}`, time, title, detail: category === 'Flag' ? message : '' })

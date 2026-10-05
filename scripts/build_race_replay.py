@@ -12,12 +12,22 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from race_start import build_start_phases
+
 
 RACES = {"monza": (11361, 12, 10), "netherlands": (11353, 1, 10)}
 API_URL = "https://api.openf1.org/v1/"
 DATA_DIRECTORY = Path(__file__).resolve().parent.parent / "public/data"
 RETRYABLE_STATUS = (429, 502, 503, 504)
 LIVE_SESSION_RETRY_SECONDS = 300
+START_TELEMETRY_DRIVER_COUNT = 5
+START_TELEMETRY_LEAD_SECONDS = 30
+START_TELEMETRY_WINDOW_SECONDS = 900
+START_INSTRUCTION_WINDOW_SECONDS = 600
+START_CONTROL_MESSAGES = (
+    "DELAYED START", "FORMATION LAP", "STARTING PROCEDURE", "START ORDER:",
+    "RACE WILL START", "SAFETY CAR LIGHTS", "STANDING START", "ROLLING START", "RACE START",
+)
 
 
 def fetch(endpoint, **filters):
@@ -98,9 +108,22 @@ def with_race_events(replay, grid_rows, overtake_rows):
             "startingGridSource": "starting_grid" if grid_rows else "position", "overtakes": overtakes}
 
 
-def fetch_starting_grid(session_key):
+def fetch_starting_grid(session):
     try:
-        return fetch("starting_grid", session_key=session_key)
+        sessions = fetch("sessions", meeting_key=session["meeting_key"])
+        qualifying_names = {"Sprint Qualifying", "Sprint Shootout"} if session["session_name"] == "Sprint" else {"Qualifying"}
+        race_start = milliseconds(session["date_start"])
+        qualifying_sessions = [
+            row for row in sessions
+            if row.get("meeting_key") == session["meeting_key"]
+            and row.get("session_name") in qualifying_names
+            and row.get("date_start")
+            and milliseconds(row["date_start"]) < race_start
+        ]
+        if not qualifying_sessions:
+            return []
+        qualifying = max(qualifying_sessions, key=lambda row: (milliseconds(row["date_start"]), row["session_key"]))
+        return fetch("starting_grid", session_key=qualifying["session_key"])
     except HTTPError as error:
         if error.code != 404:
             raise
@@ -114,6 +137,64 @@ def fetch_overtakes(session_key):
         if error.code != 404:
             raise
         return []
+
+
+def collect_race_control(controls, start, end):
+    return sorted([
+        [offset(row["date"], start), row["category"], row.get("flag"), row["message"]]
+        for row in controls
+        if milliseconds(row["date"]) <= end
+        and (row["category"] in ("SessionStatus", "SafetyCar") or row.get("flag") == "RED"
+             or row["message"] in ("RED FLAG - RACE SUSPENDED", "CHEQUERED FLAG")
+             or any(message in row["message"] for message in START_CONTROL_MESSAGES))
+    ], key=lambda row: row[0])
+
+
+def start_telemetry_windows(controls):
+    ordered = sorted(controls, key=lambda row: milliseconds(row["date"]))
+    windows = []
+    for index, row in enumerate(ordered):
+        if row["message"] != "SESSION STARTED":
+            continue
+        start = milliseconds(row["date"])
+        boundary = next((milliseconds(control["date"]) for control in ordered[index + 1:]
+                         if control["message"] in ("SESSION ABORTED", "SESSION FINISHED")
+                         or control.get("flag") == "RED"), start + START_TELEMETRY_WINDOW_SECONDS * 1000)
+        instructions = [milliseconds(control["date"]) for control in ordered[index + 1:]
+                        if control["message"] in ("STANDING START", "ROLLING START")
+                        and milliseconds(control["date"]) < boundary]
+        end = max(start + START_TELEMETRY_WINDOW_SECONDS * 1000,
+                  max(instructions, default=start) + START_INSTRUCTION_WINDOW_SECONDS * 1000)
+        windows.append((start - START_TELEMETRY_LEAD_SECONDS * 1000, min(end, boundary)))
+    return windows
+
+
+def fetch_start_telemetry(session_key, controls, grid, drivers):
+    leaders = [row["driver_number"] for row in sorted(grid, key=lambda row: row["position"])]
+    driver_numbers = (leaders or sorted(row["driver_number"] for row in drivers))[:START_TELEMETRY_DRIVER_COUNT]
+    windows = start_telemetry_windows(controls)
+    telemetry = {}
+    for number in driver_numbers:
+        rows = []
+        for start, end in windows:
+            filters = {"date>": datetime.fromtimestamp(start / 1000, timezone.utc).isoformat(),
+                       "date<": datetime.fromtimestamp(end / 1000, timezone.utc).isoformat()}
+            try:
+                rows.extend(fetch("car_data", session_key=session_key, driver_number=number, **filters))
+            except HTTPError as error:
+                if error.code != 404:
+                    raise
+                print(f"No start telemetry for car {number}; launch evidence may be incomplete", file=sys.stderr)
+        telemetry[number] = rows
+    return telemetry
+
+
+def with_start_phases(replay, controls, telemetry):
+    start = milliseconds(replay["start"])
+    end = start + round(replay["duration"] * 1000)
+    phases, launches = build_start_phases(controls, telemetry, start, end)
+    return {**replay, "raceControl": sorted(collect_race_control(controls, start, end) + phases, key=lambda row: row[0]),
+            "raceLaunches": launches}
 
 
 def write_replay(output, replay):
@@ -160,7 +241,8 @@ def select_track(laps, session_key, preferred=None):
 
 def build_replay(session, output, controls=None, preferred_track=None, total_laps=None):
     session_key = session["session_key"]
-    controls = controls if controls is not None else fetch("race_control", session_key=session_key)
+    controls = sorted(controls if controls is not None else fetch("race_control", session_key=session_key),
+                      key=lambda row: milliseconds(row["date"]))
     starts = [row for row in controls if row["category"] == "SessionStatus" and row["message"] == "SESSION STARTED"]
     finishes = [row for row in controls if row["category"] == "SessionStatus" and row["message"] == "SESSION FINISHED"]
     if not starts or not finishes:
@@ -171,21 +253,14 @@ def build_replay(session, output, controls=None, preferred_track=None, total_lap
     date_end = datetime.fromtimestamp(race_end / 1000, timezone.utc).isoformat()
 
     drivers = fetch("drivers", session_key=session_key)
+    grid = fetch_starting_grid(session)
     laps = fetch("laps", session_key=session_key)
     track = select_track(laps, session_key, preferred_track)
-    positions = fetch("position", session_key=session_key)
+    positions = sorted(fetch("position", session_key=session_key), key=lambda row: milliseconds(row["date"]))
     initial_positions = {}
     for row in positions:
         if milliseconds(row["date"]) <= race_start:
             initial_positions[row["driver_number"]] = row["position"]
-    race_control = []
-    for row in controls:
-        if not race_start <= milliseconds(row["date"]) <= race_end:
-            continue
-        if row["category"] in ("SessionStatus", "SafetyCar") or row["message"] in (
-            "RED FLAG - RACE SUSPENDED", "RACE START", "CHEQUERED FLAG", "STANDING START"
-        ):
-            race_control.append([offset(row["date"], race_start), row["category"], row.get("flag"), row["message"]])
 
     replay = {
         "sessionKey": session_key,
@@ -210,7 +285,7 @@ def build_replay(session, output, controls=None, preferred_track=None, total_lap
         "weather": sorted([[offset(row["date"], race_start), row["rainfall"], row["air_temperature"], row["track_temperature"]]
                            for row in fetch("weather", session_key=session_key)
                            if race_start <= milliseconds(row["date"]) <= race_end]),
-        "raceControl": sorted(race_control),
+        "raceControl": collect_race_control(controls, race_start, race_end),
         "stints": [[row["driver_number"], row["lap_start"], row["lap_end"], row["compound"]]
                    for row in fetch("stints", session_key=session_key)],
     }
@@ -225,27 +300,49 @@ def build_replay(session, output, controls=None, preferred_track=None, total_lap
     if not replay["positions"] or not replay["laps"] or sum(bool(rows) for rows in replay["locations"].values()) < len(drivers) * 0.8:
         raise ValueError(f"Session {session_key} has incomplete race telemetry")
     replay = with_session_metadata(replay, session)
-    write_replay(output, with_race_events(replay, fetch_starting_grid(session_key), fetch_overtakes(session_key)))
+    replay = with_race_events(replay, grid, fetch_overtakes(session_key))
+    telemetry = fetch_start_telemetry(session_key, controls, grid, drivers)
+    write_replay(output, with_start_phases(replay, controls, telemetry))
 
 
-def main(race, metadata_only=False):
-    session_key, track_driver, track_lap_number = RACES[race]
-    output = DATA_DIRECTORY / f"{race}-2026.json"
-    sessions = fetch("sessions", session_key=session_key)
+def resolve_replay_output(session, directory=DATA_DIRECTORY):
+    year = session["year"]
+    year_directory = directory / str(year)
+    catalog = year_directory / f"races-{year}.json"
+    entries = json.loads(catalog.read_text()) if catalog.exists() else []
+    entry = next((row for row in entries if row["id"] == str(session["session_key"])), None)
+    if entry:
+        existing = year_directory / Path(entry["url"]).name
+        if existing.exists():
+            return existing
+    return year_directory / f"race-{session['session_key']}-{year}.json"
+
+
+def main(race, metadata_only=False, session_key=None):
+    selected_key = session_key if session_key is not None else RACES[race][0]
+    sessions = fetch("sessions", session_key=selected_key)
     if len(sessions) != 1:
         raise ValueError("Expected exactly one race session")
     session = sessions[0]
+    output = resolve_replay_output(session)
     if metadata_only:
         replay = json.loads(output.read_text())
         replay = with_session_metadata(replay, session)
-        write_replay(output, with_race_events(replay, fetch_starting_grid(session_key), fetch_overtakes(session_key)))
+        grid = fetch_starting_grid(session)
+        replay = with_race_events(replay, grid, fetch_overtakes(selected_key))
+        controls = fetch("race_control", session_key=selected_key)
+        drivers = [{"driver_number": row["number"]} for row in replay["drivers"]]
+        telemetry = fetch_start_telemetry(selected_key, controls, grid, drivers)
+        write_replay(output, with_start_phases(replay, controls, telemetry))
         return
-    build_replay(session, output, preferred_track=(track_driver, track_lap_number))
+    preferred_track = None if session_key is not None else RACES[race][1:]
+    build_replay(session, output, preferred_track=preferred_track)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--race", choices=RACES, default="monza")
-    parser.add_argument("--metadata-only", action="store_true", help="Refresh session metadata, grid, and overtakes without downloading telemetry")
+    parser.add_argument("--session-key", type=int, help="Import or re-import a race session into its season folder")
+    parser.add_argument("--metadata-only", action="store_true", help="Refresh metadata, grid, overtakes, and start phases without downloading GPS")
     args = parser.parse_args()
-    main(args.race, args.metadata_only)
+    main(args.race, args.metadata_only, args.session_key)

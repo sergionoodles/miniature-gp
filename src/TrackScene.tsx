@@ -38,9 +38,11 @@ type Props = {
   onPhoto: (capture: SceneCapture) => void
   showCars?: boolean
   isOrbiting?: boolean
+  isSoundOn: boolean
+  onToggleSound: () => void
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isSoundOn, onToggleSound }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid, isOrbiting })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
@@ -79,7 +81,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     }))
     const canvas = pipeline.canvas
     canvas.tabIndex = 0
-    canvas.setAttribute('aria-label', 'Circuit view. Drag to orbit, scroll to zoom. Arrow keys pan. Select a driver in the running order to highlight their car.')
+    canvas.setAttribute('aria-label', 'Circuit view. Drag to orbit, scroll to zoom. Select a driver in the running order to highlight their car.')
     container.appendChild(canvas)
     const controls = new OrbitControls(camera, canvas)
     controls.minZoom = 0.7
@@ -88,7 +90,6 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     controls.enableDamping = !isReducedMotion
     controls.dampingFactor = 0.12
-    controls.listenToKeyEvents(canvas)
     const defaultYaw = startStraightViewYaw(track)
     const { width, depth } = circuitViewExtent(track, defaultYaw)
     const resetCamera = (top: boolean) => {
@@ -314,11 +315,17 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
         </button>
       </div>
       <div className="view-switch">
+        <button type="button" aria-pressed={quality === 'high'} title={quality === 'high' ? 'High graphics: effects, shadows and ambient occlusion. Select for a lighter mode.' : 'Standard graphics: a lighter scene for any computer. Select for high graphics.'} onClick={toggleQuality}>✦ <span>HD graphics</span></button>
+        <button type="button" className="sound-button" aria-label="Sound" aria-pressed={isSoundOn} title={isSoundOn ? 'Sound on: race music and effects. Select to mute.' : 'Sound off. Select to play race music and effects.'} onClick={onToggleSound}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" />
+            {isSoundOn ? <><path d="M16 9a5 5 0 0 1 0 6" /><path d="M19.364 18.364a9 9 0 0 0 0-12.728" /></> : <path d="m22 9-6 6m0-6 6 6" />}
+          </svg>
+        </button>
+      </div>
+      <div className="view-switch camera-views">
         <button type="button" aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>◈ <span>Orbit</span></button>
         <button type="button" aria-pressed={view === 'top'} onClick={() => changeView('top')}>⊞ <span>Top view</span></button>
-      </div>
-      <div className="view-switch">
-        <button type="button" aria-pressed={quality === 'high'} title={quality === 'high' ? 'High graphics: effects, shadows and ambient occlusion. Select for a lighter mode.' : 'Standard graphics: a lighter scene for any computer. Select for high graphics.'} onClick={toggleQuality}>✦ <span>HD graphics</span></button>
       </div>
       <div className="zoom-controls">
         <button type="button" aria-label="Rotate left" onClick={() => actionRef.current('left')}>↶</button>

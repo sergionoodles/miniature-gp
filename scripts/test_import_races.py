@@ -74,8 +74,8 @@ class ImportRacesTest(unittest.TestCase):
             with patch("import_races.fetch", side_effect=fetch_stub), patch("import_races.build_replay", side_effect=build_stub):
                 run_import(directory, NOW, year=2025)
             urls = [entry["url"] for entry in json.loads((directory / "2025/races-2025.json").read_text())]
-            self.assertEqual(urls, ["/data/2025/race-2-2025.json", "/data/2025/existing-2025.json"])
-            self.assertTrue((directory / "2025/race-2-2025.json").exists())
+            self.assertEqual(urls, ["/data/2025/2025-09-21-USA-MIAMI-2.json", "/data/2025/existing-2025.json"])
+            self.assertTrue((directory / "2025/2025-09-21-USA-MIAMI-2.json").exists())
             self.assertFalse((directory / "2026/races-2026.json").exists())
             self.assertEqual(json.loads((directory / "years.json").read_text()), [2025])
 
@@ -90,7 +90,7 @@ class ImportRacesTest(unittest.TestCase):
             directory = Path(temporary)
             (directory / "2025").mkdir()
             (directory / "2025/existing-2025.json").write_text(json.dumps(replay(1)))
-            (directory / "2025/race-2-2025.json").write_text(json.dumps({**replay(2), "start": "2025-09-21T16:00:00+00:00", "gmt_offset": "-04:00:00"}))
+            (directory / "2025/2025-09-21-USA-MIAMI-2.json").write_text(json.dumps({**replay(2), "start": "2025-09-21T16:00:00+00:00", "gmt_offset": "-04:00:00"}))
             previous = [{"id": "1", "url": "/data/2025/existing-2025.json", "date": "2025-09-20", "countryCode": "USA"}]
             (directory / "2025/races-2025.json").write_text(json.dumps(previous))
             schedule = [{"date": "2025-09-21", "raceName": "Miami Grand Prix", "Circuit": {
@@ -102,7 +102,7 @@ class ImportRacesTest(unittest.TestCase):
             build_mock.assert_not_called()
             entries = json.loads((directory / "2025/races-2025.json").read_text())
             self.assertEqual([entry["id"] for entry in entries], ["2", "1"])
-            self.assertEqual(entries[0]["url"], "/data/2025/race-2-2025.json")
+            self.assertEqual(entries[0]["url"], "/data/2025/2025-09-21-USA-MIAMI-2.json")
             self.assertEqual(entries[0]["countryCode"], "USA")
             self.assertEqual(json.loads((directory / "years.json").read_text()), [2025])
 
@@ -178,7 +178,61 @@ class ImportRacesTest(unittest.TestCase):
             self.assertEqual([entry["id"] for entry in entries], ["2", "1"])
             self.assertEqual(entries[0]["laps"], 58)
             self.assertEqual(entries[0]["date"], "2026-09-21")
-            self.assertEqual(entries[0]["url"], "/data/2026/race-2-2026.json")
+            self.assertEqual(entries[0]["url"], "/data/2026/2026-09-21-USA-MIAMI-2.json")
+
+    def test_filename_uses_local_date_and_normalizes_circuit_name(self):
+        race_session = session(1, "2026-09-21", date_start="2026-09-21T04:00:00+00:00",
+                               gmt_offset="-08:00:00", circuit_short_name="Las Vegas / Strip")
+
+        def fetch_stub(endpoint, **filters):
+            if endpoint == "sessions":
+                return [race_session]
+            if endpoint == "meetings":
+                return [meeting(1)]
+            if endpoint == "race_control":
+                return [{"category": "SessionStatus", "message": "SESSION FINISHED"}]
+            return [{"number_of_laps": 57}]
+
+        def build_stub(race_session, path, controls, total_laps):
+            path.write_text(json.dumps(replay(1)))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            with patch("import_races.fetch", side_effect=fetch_stub), patch("import_races.build_replay", side_effect=build_stub):
+                run_import(directory, NOW)
+            filename = "2026-09-20-USA-LAS-VEGAS-STRIP-1.json"
+            self.assertTrue((directory / "2026" / filename).exists())
+            entries = json.loads((directory / "2026/races-2026.json").read_text())
+            self.assertEqual(entries[0]["url"], f"/data/2026/{filename}")
+
+    def test_filename_converts_racing_country_codes_to_iso_codes(self):
+        codes = [("BRN", "BHR"), ("NED", "NLD"), ("KSA", "SAU"),
+                 ("UAE", "ARE"), ("MON", "MCO"), ("MAS", "MYS")]
+        sessions = [session(key, "2026-09-20", country_code=code)
+                    for key, (code, _) in enumerate(codes, start=1)]
+
+        def fetch_stub(endpoint, **filters):
+            if endpoint == "sessions":
+                return sessions
+            if endpoint == "meetings":
+                return [meeting(row["session_key"]) for row in sessions]
+            if endpoint == "race_control":
+                return [{"category": "SessionStatus", "message": "SESSION FINISHED"}]
+            return [{"number_of_laps": 57}]
+
+        def build_stub(race_session, path, controls, total_laps):
+            path.write_text(json.dumps(replay(race_session["session_key"])))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            with patch("import_races.fetch", side_effect=fetch_stub), patch("import_races.build_replay", side_effect=build_stub):
+                run_import(directory, NOW)
+            entries = json.loads((directory / "2026/races-2026.json").read_text())
+            expected_urls = [f"/data/2026/2026-09-20-{code}-MIAMI-{key}.json"
+                             for key, (_, code) in enumerate(codes, start=1)]
+            self.assertEqual([entry["url"] for entry in entries], expected_urls)
+            self.assertTrue(all((directory / entry["url"].removeprefix("/data/")).exists()
+                                for entry in entries))
 
     def test_reports_import_errors_after_writing_successful_races(self):
         sessions = [session(1, "2026-09-20"), session(2, "2026-09-21")]

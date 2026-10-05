@@ -1,0 +1,129 @@
+import { Children, isValidElement, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { afterEach, expect, it, vi } from 'vitest'
+import App from './App'
+
+const hooks = vi.hoisted(() => ({
+  values: [] as unknown[],
+  cursor: 0,
+  effects: [] as { dependencies: readonly unknown[]; cleanup?: () => void }[],
+  effectCursor: 0,
+  pending: [] as (() => void)[],
+}))
+
+// Shallow rendering keeps this interaction test independent of WebGL and browser audio.
+vi.mock('react', async (importOriginal) => {
+  const react = await importOriginal<typeof import('react')>()
+  const useState = <Value,>(initial: Value | (() => Value)) => {
+    const index = hooks.cursor++
+    if (!(index in hooks.values)) hooks.values[index] = typeof initial === 'function' ? (initial as () => Value)() : initial
+    return [hooks.values[index] as Value, (next: Value | ((current: Value) => Value)) => {
+      hooks.values[index] = typeof next === 'function' ? (next as (current: Value) => Value)(hooks.values[index] as Value) : next
+    }] as const
+  }
+  return {
+    ...react,
+    useState,
+    useRef: <Value,>(initial: Value) => useState({ current: initial })[0],
+    useMemo: <Value,>(factory: () => Value) => factory(),
+    useEffect: (effect: () => void | (() => void), dependencies: readonly unknown[]) => {
+      const index = hooks.effectCursor++
+      const previous = hooks.effects[index]
+      if (previous && dependencies.every((value, dependencyIndex) => Object.is(value, previous.dependencies[dependencyIndex]))) return
+      hooks.pending.push(() => {
+        previous?.cleanup?.()
+        hooks.effects[index] = { dependencies, cleanup: effect() || undefined }
+      })
+    },
+  }
+})
+
+function findSelect(node: ReactNode, label: string): SelectHTMLAttributes<HTMLSelectElement> | undefined {
+  if (Array.isArray(node)) return node.map((child) => findSelect(child, label)).find(Boolean)
+  if (!isValidElement<{ children?: ReactNode; 'aria-label'?: string }>(node)) return undefined
+  if (node.type === 'select' && node.props['aria-label'] === label) return node.props
+  return findSelect(node.props.children, label)
+}
+
+async function renderApp() {
+  let tree: ReactNode = null
+  for (let pass = 0; pass < 5; pass += 1) {
+    hooks.cursor = 0
+    hooks.effectCursor = 0
+    tree = App()
+    hooks.pending.splice(0).forEach((effect) => effect())
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  }
+  return tree
+}
+
+const race = (year: number, id: string, circuit: string) => ({
+  id, circuit, url: `/data/${year}/${id}.json`, label: circuit,
+  grandPrix: circuit, location: circuit, countryCode: 'ITA', date: `${year}-09-06`, laps: 53,
+})
+
+afterEach(() => {
+  hooks.effects.forEach((effect) => effect.cleanup?.())
+  hooks.values = []
+  hooks.effects = []
+  hooks.pending = []
+  vi.unstubAllGlobals()
+})
+
+it('only changes the race and route after a Grand Prix is selected in the browsed season', async () => {
+  const currentRace = race(2026, '11361', 'Monza')
+  const previousRace = race(2025, '9979', 'Monaco')
+  const location = { pathname: '/2026/monza' }
+  const pushState = vi.fn((_state: unknown, _title: string, path: string) => { location.pathname = path })
+  const replaceState = vi.fn((_state: unknown, _title: string, path: string) => { location.pathname = path })
+  const listeners = new Map<string, () => void>()
+  vi.stubGlobal('window', {
+    location, history: { pushState, replaceState },
+    addEventListener: (event: string, listener: () => void) => listeners.set(event, listener),
+    removeEventListener: (event: string) => listeners.delete(event),
+    setTimeout, clearTimeout, clearInterval,
+  })
+  vi.stubGlobal('document', { title: '', removeEventListener: vi.fn() })
+  vi.stubGlobal('requestAnimationFrame', vi.fn())
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const fetchData = vi.fn(async (url: string) => {
+    const value = url === '/data/years.json' ? [2026, 2025]
+      : url === '/data/2026/races-2026.json' ? [currentRace]
+        : url === '/data/2025/races-2025.json' ? [previousRace] : null
+    return { ok: value !== null, status: value === null ? 404 : 200, json: async () => value }
+  })
+  vi.stubGlobal('fetch', fetchData)
+
+  const initialTree = await renderApp()
+  pushState.mockClear()
+  replaceState.mockClear()
+  fetchData.mockClear()
+  findSelect(initialTree, 'Season')?.onChange?.({ target: { value: '2025' } } as React.ChangeEvent<HTMLSelectElement>)
+  const browsingTree = await renderApp()
+
+  expect(location.pathname).toBe('/2026/monza')
+  expect(pushState).not.toHaveBeenCalled()
+  expect(replaceState).not.toHaveBeenCalled()
+  expect(document.title).toContain('Monza 2026')
+  expect(fetchData.mock.calls.map(([url]) => url)).toEqual(['/data/2025/races-2025.json'])
+  const optionValues = Children.toArray(findSelect(browsingTree, 'Grand Prix')?.children)
+    .filter(isValidElement<{ value: string; hidden?: boolean }>)
+    .filter((option) => !option.props.hidden)
+    .map((option) => option.props.value)
+  expect(optionValues).toEqual(['9979'])
+
+  findSelect(browsingTree, 'Grand Prix')?.onChange?.({ target: { value: '9979' } } as React.ChangeEvent<HTMLSelectElement>)
+  await renderApp()
+
+  expect(location.pathname).toBe('/2025/monaco')
+  expect(pushState).toHaveBeenCalledTimes(1)
+  expect(document.title).toContain('Monaco 2025')
+
+  location.pathname = '/2026/monza'
+  listeners.get('popstate')?.()
+  const restoredTree = await renderApp()
+
+  expect(findSelect(restoredTree, 'Season')?.value).toBe(2026)
+  expect(findSelect(restoredTree, 'Grand Prix')?.value).toBe('11361')
+  expect(document.title).toContain('Monza 2026')
+  expect(pushState).toHaveBeenCalledTimes(1)
+})

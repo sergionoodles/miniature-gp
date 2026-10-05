@@ -4,11 +4,15 @@ import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCar
 import { TrackScene } from './TrackScene'
 import { PhotoReview } from './PhotoReview'
 import { RaceResults } from './RaceResults'
+import { RaceStartLights, START_LIGHT_COUNT, START_LIGHT_INTERVAL } from './RaceStartLights'
 import { raceResults } from './raceResults'
+import { isCautionStatus, musicMoodFor } from './raceMusic'
+import { useRaceAudio } from './useRaceAudio'
 import { nextRaceAfter, nextSeason } from './nextRace'
 import type { RacePhotoHud, SceneCapture } from './racePhoto'
 import { createWeatherTimeline, describeWeather } from './raceWeather'
-import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, positionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
+import { isTimeShortcutTarget, SKIP_SECONDS, skipSecondsForKey } from './replayShortcuts'
+import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, racePositionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
 
 type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
 const FALLBACK_RACES: RaceOption[] = [
@@ -30,6 +34,12 @@ const DEFAULT_SPEED = 10
 const NOTIFICATION_DURATION = 6000
 const LOADER_STEP_DURATION = 500
 const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
+const START_PHASE_NOTICES: Record<string, string> = {
+  'Delayed start': 'Waiting for race control',
+  'Formation lap': 'The field is preparing for the start',
+  'Start suspended': 'The start procedure has been suspended',
+  'Waiting for start': 'Preparing for lights out',
+}
 const routeFromPath = (pathname: string) => {
   const match = pathname.match(/^\/(\d{4})\/([^/]+)\/?$/)
   return match ? { year: Number(match[1]), circuitSlug: match[2] } : null
@@ -47,6 +57,8 @@ export default function App() {
   const [year, setYear] = useState(() => routeFromPath(window.location.pathname)?.year ?? 2026)
   const [requestedCircuitSlug, setRequestedCircuitSlug] = useState(() => routeFromPath(window.location.pathname)?.circuitSlug ?? null)
   const [races, setRaces] = useState(FALLBACK_RACES)
+  const [pickerYear, setPickerYear] = useState(year)
+  const [pickerRaces, setPickerRaces] = useState(FALLBACK_RACES)
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null)
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null)
   const [isOrderOpen, setIsOrderOpen] = useState(false)
@@ -73,12 +85,13 @@ export default function App() {
   const previousNotificationTimeRef = useRef(0)
   const isPlayingRef = useRef(false)
   const speedRef = useRef(DEFAULT_SPEED)
+  const { audio, isSoundOn, toggleSound } = useRaceAudio()
 
   useEffect(() => {
     document.title = `${race.grandPrix} ${year} | Miniature GP`
   }, [race.grandPrix, year])
 
-  const selectRace = (nextRaceId: string, options = races, updateHistory = true) => {
+  const selectRace = (nextRaceId: string, options = races, updateHistory = true, nextYear = year) => {
     isPlayingRef.current = false
     timeRef.current = 0
     previousNotificationTimeRef.current = 0
@@ -100,7 +113,7 @@ export default function App() {
     setIsResultsOpen(false)
     setRaceId(nextRaceId)
     const nextRace = options.find((option) => option.id === nextRaceId)
-    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(year, nextRace))
+    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(nextYear, nextRace))
   }
 
   useEffect(() => {
@@ -147,6 +160,42 @@ export default function App() {
       })
     return () => controller.abort()
   }, [year, requestedCircuitSlug])
+
+  useEffect(() => {
+    setPickerYear(year)
+  }, [year])
+
+  useEffect(() => {
+    if (pickerYear === year) {
+      setPickerRaces(races)
+      return
+    }
+    const controller = new AbortController()
+    setPickerRaces([])
+    fetch(`/data/${pickerYear}/races-${pickerYear}.json`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Race catalog could not be loaded (${response.status}).`)
+        return response.json() as Promise<unknown>
+      })
+      .then((value) => {
+        if (!Array.isArray(value) || !value.length || !value.every(isRaceOption)) throw new Error('Race catalog is invalid.')
+        setPickerRaces([...value].sort((first, second) => second.date.localeCompare(first.date)))
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === 'AbortError') return
+        console.error('The selected season could not be loaded:', cause)
+      })
+    return () => controller.abort()
+  }, [pickerYear, year, races])
+
+  const selectPickerRace = (nextRaceId: string) => {
+    const nextRace = pickerRaces.find((option) => option.id === nextRaceId)
+    if (!nextRace) return
+    if (pickerYear !== year) setRequestedCircuitSlug(circuitSlug(nextRace.circuit))
+    setYear(pickerYear)
+    setRaces(pickerRaces)
+    selectRace(nextRaceId, pickerRaces, true, pickerYear)
+  }
 
   useEffect(() => {
     const handlePopState = () => {
@@ -214,6 +263,7 @@ export default function App() {
           isPlayingRef.current = false
           setIsPlaying(false)
           setIsResultsOpen(true)
+          audio.play('chequeredFlag')
         }
       }
       previous = now
@@ -229,6 +279,7 @@ export default function App() {
 
   useEffect(() => {
     if (countdown === null) return
+    audio.play('startLight')
     const timeout = window.setTimeout(() => {
       if (countdown > 1) {
         setCountdown(countdown - 1)
@@ -238,19 +289,22 @@ export default function App() {
       setHasStarted(true)
       isPlayingRef.current = true
       setIsPlaying(true)
-    }, 1000)
+      audio.play('lightsOut')
+    }, START_LIGHT_INTERVAL)
     return () => window.clearTimeout(timeout)
-  }, [countdown])
+  }, [audio, countdown])
 
   useEffect(() => {
     const previousTime = previousNotificationTimeRef.current
     previousNotificationTimeRef.current = time
     if (!replay || !hasStarted || time <= previousTime) return
+    const nextStatus = raceStatus(replay.raceControl, time)
+    if (isCautionStatus(nextStatus) && nextStatus !== raceStatus(replay.raceControl, previousTime)) audio.play('caution')
     const arrivals = notificationsBetween(replay, previousTime, time, speed)
     if (!arrivals.length) return
     const expiresAt = performance.now() + NOTIFICATION_DURATION
     setNotifications((current) => [...arrivals.reverse().map((notice) => ({ ...notice, expiresAt })), ...current].slice(0, 8))
-  }, [replay, time, hasStarted, speed])
+  }, [audio, replay, time, hasStarted, speed])
 
   useEffect(() => {
     if (!notifications.length) return
@@ -266,7 +320,7 @@ export default function App() {
       setTime(0)
     }
     if (playing && timeRef.current === 0) {
-      setCountdown(3)
+      setCountdown(START_LIGHT_COUNT)
       return
     }
     isPlayingRef.current = playing
@@ -275,6 +329,7 @@ export default function App() {
   }
 
   const seek = (nextTime: number) => {
+    const isFinishing = replay !== null && nextTime >= replay.duration && timeRef.current < replay.duration
     setCountdown(null)
     if (nextTime > 0) setHasStarted(true)
     timeRef.current = nextTime
@@ -285,7 +340,26 @@ export default function App() {
       setPlayback(false)
       setIsResultsOpen(true)
     }
+    if (isFinishing) audio.play('chequeredFlag')
   }
+
+  const skip = (seconds: number) => {
+    if (!replay) return
+    seek(Math.min(replay.duration, Math.max(0, timeRef.current + seconds)))
+  }
+
+  useEffect(() => {
+    if (!replay) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const seconds = skipSecondsForKey(event)
+      if (seconds === null || event.defaultPrevented || !isTimeShortcutTarget(event.target)) return
+      event.preventDefault()
+      skip(seconds)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  // skip only depends on the replay; the rest of its state is read through refs and setters.
+  }, [replay])
 
   const changeSpeed = (nextSpeed: number) => {
     speedRef.current = nextSpeed
@@ -297,7 +371,7 @@ export default function App() {
     if (!replay) return []
     const positions = time === 0 && !isPlaying
       ? new Map(replay.startingGrid)
-      : positionsAt(replay.positions, time)
+      : racePositionsAt(replay, time)
     const laps = lapsAt(replay.laps, time)
     return replay.drivers
       .map((driver) => ({ ...driver, position: positions.get(driver.number) ?? 99, lap: laps.get(driver.number) ?? 1 }))
@@ -310,6 +384,14 @@ export default function App() {
   const weather = weatherAt?.(time) ?? null
   const conditions = weather ? describeWeather(weather) : null
   const status = replay ? raceStatus(replay.raceControl, time) : 'Loading'
+  const isCountingDown = countdown !== null
+
+  useEffect(() => {
+    audio.setMood(musicMoodFor({ isCountingDown, isPlaying, status }))
+  }, [audio, isCountingDown, isPlaying, status])
+
+  const firstLaunch = replay?.raceLaunches?.[0]
+  const isBeforeLaunch = firstLaunch !== undefined && time < firstLaunch.time
   const leaderLap = order[0]?.lap ?? 1
   const isRaining = conditions?.label === 'Rain'
   const selected = order.find((driver) => driver.number === selectedDriver)
@@ -322,6 +404,7 @@ export default function App() {
   const takePhoto = (capture: SceneCapture) => {
     const resumesPlayback = isPlayingRef.current
     setPlayback(false)
+    audio.play('shutter')
     setPhoto({
       capture,
       resumesPlayback,
@@ -418,9 +501,10 @@ export default function App() {
           </div>
         </div>
         <div className="race-picker" role="group" aria-label="Selected race">
-          <label>Season<select aria-label="Season" value={year} onChange={(event) => { setRequestedCircuitSlug(circuitSlug(race.circuit)); setYear(Number(event.target.value)) }}>{years.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-          <label>Grand Prix<select aria-label="Grand Prix" value={race.id} onChange={(event) => selectRace(event.target.value)}>
-            {races.map((option) => <option key={option.id} value={option.id}>{option.label}{option.date ? ` · ${formatRaceDate(option.date)}` : ''}</option>)}
+          <label>Season<select aria-label="Season" value={pickerYear} onChange={(event) => setPickerYear(Number(event.target.value))}>{years.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+          <label>Grand Prix<select aria-label="Grand Prix" value={pickerYear === year ? race.id : ""} disabled={!pickerRaces.length} onChange={(event) => selectPickerRace(event.target.value)}>
+            {pickerYear !== year && <option value="" disabled hidden>{pickerRaces.length ? 'Select a Grand Prix' : 'Loading races…'}</option>}
+            {pickerRaces.map((option) => <option key={option.id} value={option.id}>{option.label}{option.date ? ` · ${formatRaceDate(option.date)}` : ''}</option>)}
           </select></label>
         </div>
       </header>
@@ -429,8 +513,8 @@ export default function App() {
         <aside id="running-order-panel" className={`order-panel${isOrderOpen ? ' order-panel-open' : ''}`}>
           <div className="panel-heading">
             <div>
-              <span className="section-title">Running order</span>
-              <span className="section-note">{race.circuit.replace('Circuit ', '')} · {formatRaceDate(race.date)}</span>
+              <span className="section-title">{isBeforeLaunch ? 'Starting order' : 'Running order'}</span>
+              <span className="section-note">{race.circuit.replace('Circuit ', '')}</span>
             </div>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
             <button className="order-close" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)}>×</button>
@@ -454,7 +538,7 @@ export default function App() {
         <section className="race-stage" aria-label="Race simulation">
           <button className="order-toggle" type="button" aria-label="Open running order" aria-controls="running-order-panel" aria-expanded={isOrderOpen} onClick={() => setIsOrderOpen(true)}><span aria-hidden="true">☰</span></button>
           {isOrderOpen && <button className="order-backdrop" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)} />}
-          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} />}
+          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isSoundOn={isSoundOn} onToggleSound={toggleSound} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
             <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>
@@ -480,6 +564,7 @@ export default function App() {
             </div>
           </div>
           {status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}
+          {START_PHASE_NOTICES[status] && <div className="race-notice">{status} <span>{START_PHASE_NOTICES[status]}</span></div>}
           <div className="notification-stack" aria-label="Race notifications" aria-live="polite">
             {notifications.map((notice) => <div className="race-toast" key={notice.id}>
               {notice.drivers
@@ -489,7 +574,7 @@ export default function App() {
             </div>)}
           </div>
           {replay && (!hasStarted || countdown !== null) && <div className="race-start-hud">
-            {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start race</button> : <div className="race-start-countdown" role="status" aria-live="polite"><span>RACE START</span><strong>{countdown}</strong><div className={`start-lights step-${4 - countdown}`} aria-hidden="true"><i /><i /><i /></div></div>}
+            {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start replay</button> : <RaceStartLights countdown={countdown} />}
           </div>}
           {replay && !unavailable && !isResultsOpen && time >= replay.duration && <div className="race-start-hud">
             <button className="race-start-button" type="button" onClick={() => setIsResultsOpen(true)}><span className="results-button-flag" aria-hidden="true" /> Race results</button>
@@ -506,9 +591,13 @@ export default function App() {
 
       <footer className="transport">
         <div className="replay-label"><span className="section-eyebrow">SESSION REPLAY</span><strong>{countdown !== null ? 'Starting' : isPlaying ? 'Playing' : 'Paused'} <span className={isPlaying ? 'playback-dot active' : 'playback-dot'} /></strong></div>
-        <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(countdown === null && !isPlaying)} aria-label={countdown !== null ? 'Cancel race start' : isPlaying ? 'Pause replay' : 'Play replay'}>
-          {isPlaying || countdown !== null ? <span className="pause-icon" /> : <span className="play-icon" />}
-        </button>
+        <div className="transport-controls">
+          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(-SKIP_SECONDS)} aria-label="Back 1 minute" title="Back 1 minute (←)"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 9a1 1 0 0 1-1-1V4.707a.707.707 0 0 0-1.207-.5l-6.94 6.94a1.207 1.207 0 0 0 0 1.707l6.94 6.94a.707.707 0 0 0 1.207-.5V16a1 1 0 0 1 1-1h2a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1z" /><path d="M20 9v6" /></svg></button>
+          <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(countdown === null && !isPlaying)} aria-label={countdown !== null ? 'Cancel race start' : isPlaying ? 'Pause replay' : 'Play replay'}>
+            {isPlaying || countdown !== null ? <span className="pause-icon" /> : <span className="play-icon" />}
+          </button>
+          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(SKIP_SECONDS)} aria-label="Forward 1 minute" title="Forward 1 minute (→)"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 9a1 1 0 0 0 1-1V4.707a.707.707 0 0 1 1.207-.5l6.94 6.94a1.207 1.207 0 0 1 0 1.707l-6.94 6.94a.707.707 0 0 1-1.207-.5V16a1 1 0 0 0-1-1H9a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" /><path d="M4 9v6" /></svg></button>
+        </div>
         <div className="timeline-wrap">
           <div className="time-labels"><span>{clockLabel(time)}</span><span>{replay ? clockLabel(replay.duration) : '00:00:00'}</span></div>
           <input className="timeline" type="range" aria-label="Replay position" min="0" max={replay?.duration ?? 1} step="0.1" value={time} disabled={!replay} onChange={(event) => seek(Number(event.target.value))} style={{ '--progress': `${replay ? time / replay.duration * 100 : 0}%` } as React.CSSProperties} />
