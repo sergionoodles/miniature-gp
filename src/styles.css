@@ -208,7 +208,7 @@ h1 { margin: 0; font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif; font-
   .camera-toolbar { bottom: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; flex-wrap: nowrap; gap: 4px; }
   .camera-toolbar .view-switch:has(.photo-button), .camera-toolbar .camera-views { display: none; }
   .camera-toolbar .view-switch, .camera-toolbar .zoom-controls { padding: 3px; }
-  .camera-toolbar button { min-width: 38px; min-height: 32px; }
+  .camera-toolbar button { min-width: 38px; min-height: 44px; }
   .view-switch button { padding: 0 6px; }
   .camera-toolbar .sound-button { justify-content: center; }
   .view-switch span { font-size: 10px; white-space: nowrap; }

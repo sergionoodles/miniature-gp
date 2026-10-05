@@ -31,7 +31,6 @@ const formatRaceDate = (date: string) => {
 }
 const SPEEDS = [1, 2, 5, 10, 25, 50, 100]
 const DEFAULT_SPEED = 10
-const SKIP_SECONDS = 60
 const NOTIFICATION_DURATION = 6000
 const LOADER_STEP_DURATION = 500
 const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
