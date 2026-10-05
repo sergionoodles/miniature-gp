@@ -31,6 +31,7 @@ const formatRaceDate = (date: string) => {
 }
 const SPEEDS = [1, 2, 5, 10, 25, 50, 100]
 const DEFAULT_SPEED = 10
+const SKIP_SECONDS = 60
 const NOTIFICATION_DURATION = 6000
 const LOADER_STEP_DURATION = 500
 const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
@@ -514,7 +515,7 @@ export default function App() {
           <div className="panel-heading">
             <div>
               <span className="section-title">{isBeforeLaunch ? 'Starting order' : 'Running order'}</span>
-              <span className="section-note">{race.circuit.replace('Circuit ', '')} · {formatRaceDate(race.date)}</span>
+              <span className="section-note">{race.circuit.replace('Circuit ', '')}</span>
             </div>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
             <button className="order-close" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)}>×</button>
