@@ -531,14 +531,11 @@ export default function App() {
       <main className="workspace">
         <aside id="running-order-panel" className={`order-panel${isOrderOpen ? ' order-panel-open' : ''}`}>
           <div className="panel-heading">
-            <div>
-              <span className="section-title">{isBeforeLaunch ? 'Starting order' : 'Running order'}</span>
-              <span className="section-note">{race.circuit.replace('Circuit ', '')}</span>
-            </div>
+            <span className="section-title">{isBeforeLaunch ? 'Starting order' : 'Running order'}</span>
             <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
             <button className="order-close" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)}>×</button>
           </div>
-          <div className="order-hint">Hover to isolate · Select to locate <span>↗</span></div>
+          <div className="order-hint">Hover to isolate · Select to locate</div>
           <div className="order-list" role="region" tabIndex={0} aria-label="Running order">
             {order.map((driver) => (
               <button type="button" className={`driver-row${selectedDriver === driver.number ? ' selected' : ''}`} key={driver.number} aria-pressed={selectedDriver === driver.number} aria-label={`Highlight ${driver.name}, ${driver.position === 99 ? 'position unavailable' : `position ${driver.position}`}, ${driver.team}, number ${driver.number}${stoppedAt(stops.get(driver.number) ?? [], time) ? ', stopped car inferred from telemetry' : ''}`}  onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHoveredDriver(driver.number) }} onPointerLeave={() => setHoveredDriver(null)} onFocus={() => setHoveredDriver(driver.number)} onBlur={() => setHoveredDriver(null)} onClick={() => setSelectedDriver(selectedDriver === driver.number ? null : driver.number)}>
@@ -568,7 +565,6 @@ export default function App() {
           </div>}
           <div className="stage-topline">
             <div className="stage-title">
-              <span className="stage-kicker">{race.countryCode} / {race.date.slice(0, 4)}</span>
               <h1 className={race.location.length > 12 ? 'long-circuit-name' : undefined}>{race.location}</h1>
               <span>{race.grandPrix} <b>·</b> {formatRaceDate(race.date)}</span>
             </div>
