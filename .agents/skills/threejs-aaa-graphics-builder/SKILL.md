@@ -24,7 +24,7 @@ Glow does not make primitives look AAA. Build authored forms first, then materia
 
 ## Workflow
 
-1. Capture or inspect active-play screenshots on the target viewports when a playable scene exists.
+1. Capture or inspect active-play screenshots on the target viewports when a playable scene exists. Delegate the captures to `visual-capture` and open only the views you score yourself.
 2. For an existing game, score the affected views and pick the weakest surfaces. For a new game, establish art direction, camera scale, material roles, and the hero target first; do not invent a before screenshot.
 3. Improve the relevant forms, materials, world detail, effects, and lighting using existing project ownership; add structure only where needed.
 4. Choose a source per high-value surface: procedural Three.js, a `threejs-image-generator` reference or texture, a `threejs-3d-generator` model, or an image-to-3D hybrid chain. Use external generation only through an authorized available managed tool.

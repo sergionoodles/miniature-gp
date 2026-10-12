@@ -17,7 +17,7 @@ Load `threejs-image-generator` when logos, icons, GUI art, faction marks, menu b
 
 ## Workflow
 
-1. Inspect available views of what exists on supported target devices, or describe the needed captures.
+1. Inspect available views of what exists on supported target devices, or describe the needed captures. Delegate captures to `visual-capture` and open only the images you need to judge.
 2. Inventory the UI states: gameplay, pause, settings, fail and retry, win or milestone, loading, touch controls.
 3. Set the hierarchy: survival and status, then objective, then feedback, then flavor.
 4. Replace utility stat cards with authored clusters, meters, badges, icons, alerts, and modal states.

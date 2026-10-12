@@ -8,6 +8,8 @@ Reach states through actual controls where possible. A label or acknowledged tes
 
 ## Efficient capture
 
+Delegate captures to the `visual-capture` sub-agent when one is available. Brief it with the URL, each state/viewport pair and how to reach it, and what to check. Work from its text descriptions and artifact paths, and open an image yourself only when a judgment needs it (graphics scoring, a suspected rendering defect), at most one or two per pass.
+
 Declare the relevant state/viewport pairs before the final verification pass and capture them in one browser session when existing tooling supports it. Give each pass a distinct identifier or capture directory; keep failed entries visible instead of dropping them. Limit file discovery to declared artifacts, avoiding dependency folders, build output, and historical test reports.
 
 Prefer CSS-pixel screenshots for ordinary layout and gameplay review, retaining device-resolution captures when fine detail or rendering defects require them. For example, a 390 CSS-pixel viewport at DPR 3 need not produce a 1170-pixel-wide review image. Capture once per state and reuse that image for any needed canvas crop. This changes review image size, not the game's runtime DPR.

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "skills": {
+    "threejs-3d-generator": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "fb697a517a5120a504e39bfa8f7f8003b92b7fec73cfc99ca49238770040e7f2"
+    },
+    "threejs-aaa-graphics-builder": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "6c083edba6b6c53f90532aa695b3ad11ebbe371a3164548fad2569fb626b5a6f"
+    },
+    "threejs-audio-generator": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "8fdd6c5d1ff0080325aa10e343bb47353fb4814a4c1bb91617b4675917143128"
+    },
+    "threejs-debug-profiler": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "05287c78b9d2f4018730d720f80ee3817845676c02e7795649f36240c0e9bed4"
+    },
+    "threejs-game-director": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "1fe5604943833981d852c72d349c3183631ea81e15bc3e8e7be938afd65b99e3"
+    },
+    "threejs-game-ui-designer": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "a5e72bbac74fa3e4c81a628cb2604a0729ca07848bd2756f7da7a6c4221292f3"
+    },
+    "threejs-gameplay-systems": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "b6c2cc3d2df631e86e3faaa2c1bca18e9ca0ff21372fe0696b599af2a0a16be8"
+    },
+    "threejs-image-generator": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "5d0070e12aed706bc0d033974ec7ac9cbab5db0862d4e76898fd16d22545bff3"
+    },
+    "threejs-qa-release": {
+      "source": "../../.agents/custom-game-skills",
+      "sourceType": "local",
+      "computedHash": "8bffbf0d7fedb090f1ec1118b7f814d1de81d9e8f3f1865ded49613cd67d7e49"
+    }
+  }
+}
