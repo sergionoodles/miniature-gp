@@ -1,0 +1,181 @@
+/* Race HUD: timing tower on the left, toasts top right, scene rail bottom right and the replay dock below. */
+:root {
+  --hud-surface: #0b1319d6; --hud-surface-solid: #0b1319f5; --hud-line: #dce4e526; --hud-line-strong: #dce4e550; --hud-text: #edf1f3; --hud-dim: #93a2aa; --hud-hover: #ffffff14; --hud-ink: #0b1319;
+  --hud-radius: 6px; --hud-gap: 14px; --hud-blur: blur(16px); --hud-shadow: 0 8px 28px #0007;
+  /* TrackScene offsets the circuit by the same 286px, so the track stays centred in the free area. */
+  --tower-width: 272px; --tower-space: calc(var(--tower-width) + var(--hud-gap)); --dock-height: 64px;
+  --display-font: 'Arial Narrow', 'Helvetica Neue', sans-serif; --accent: #e10600;
+  --tone-green: #2fd57a; --tone-yellow: #ffd23f; --tone-red: #ff3b30; --tone-neutral: #9aabb3;
+  --chequered: repeating-conic-gradient(#f4f6f7 0 25%, #0a0d10 0 50%) 0 0 / 6px 6px;
+}
+.tone-green { --tone: var(--tone-green); }
+.tone-yellow { --tone: var(--tone-yellow); }
+.tone-red { --tone: var(--tone-red); }
+.tone-neutral { --tone: var(--tone-neutral); }
+.tone-chequered { --tone: #f4f6f7; }
+
+.app-shell { height: 100dvh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden; }
+.race-view { position: relative; flex: 1; min-height: 0; }
+.race-stage { position: absolute; inset: 0; overflow: hidden; background: #09151f; }
+.race-view svg, .replay-dock svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Timing tower: circuit, conditions, lap and running order in one column. */
+.timing-tower { position: absolute; z-index: 3; top: var(--hud-gap); bottom: var(--hud-gap); left: var(--hud-gap); width: var(--tower-width); display: flex; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid var(--hud-line); border-radius: var(--hud-radius); background: var(--hud-surface); backdrop-filter: var(--hud-blur); box-shadow: var(--hud-shadow); }
+.race-title { container-type: inline-size; padding: 14px 16px 12px; }
+/* Sized from the name's length so the longest circuit still fits on one line; 0.8em covers a wide fallback font. */
+.race-title h1 { margin: 0; overflow: hidden; font-family: var(--display-font); font-size: clamp(15px, calc(100cqi / (var(--name-length) * .8)), 40px); font-weight: 300; line-height: 1.1; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.race-title p { margin: 4px 0 0; overflow: hidden; color: var(--hud-dim); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+.race-conditions { display: grid; border-block: 1px solid var(--hud-line); }
+.condition-status { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 3px 10px; padding: 11px 16px 11px 12px; border-left: 4px solid var(--tone); background: linear-gradient(90deg, color-mix(in srgb, var(--tone) 28%, transparent), color-mix(in srgb, var(--tone) 8%, transparent)); }
+.condition-status strong { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 800; letter-spacing: 1.2px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.condition-status > span { grid-column: 2; color: #d5dde0; font-size: 11px; }
+.tone-swatch { width: 12px; height: 12px; border-radius: 2px; background: var(--tone); box-shadow: 0 0 12px color-mix(in srgb, var(--tone) 60%, transparent); }
+.tone-chequered .tone-swatch { background: var(--chequered); box-shadow: none; }
+.tone-red .tone-swatch { animation: tone-pulse 1.2s ease-in-out infinite; }
+.condition-weather { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-top: 1px solid var(--hud-line); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.weather-symbol { font-size: 20px; line-height: 1; }
+.weather-label { min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; }
+.weather-reading { display: grid; justify-items: end; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.weather-reading small { color: var(--hud-dim); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
+@keyframes tone-pulse { 50% { opacity: .35; } }
+
+.lap-counter { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 7px 10px; padding: 12px 16px 8px; }
+.lap-title, .order-title { color: var(--hud-dim); font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; }
+.lap-value { color: var(--hud-dim); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lap-value small { margin-right: 6px; font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; }
+.lap-value b { margin-right: 1px; color: var(--hud-text); font-size: 18px; font-weight: 700; }
+.lap-progress { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 2px; background: #ffffff1c; }
+.lap-progress i { display: block; height: 100%; background: var(--accent); transform-origin: left; transition: transform .3s ease; }
+.order-toggle, .order-close, .order-backdrop { display: none; }
+
+.running-order { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* The lap row already titles the list on wide screens; the heading stays for screen readers and the phone drawer. */
+.order-heading { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.order-title { margin: 0; }
+/* The fade hints that the list scrolls; the bottom padding keeps the last row clear of it. */
+.order-list { flex: 1; min-height: 0; padding-bottom: 20px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #5d6a71 transparent; mask-image: linear-gradient(#000 calc(100% - 28px), transparent); }
+.order-row { --team-color: #fff; display: grid; grid-template-columns: 22px 3px 36px minmax(0, 1fr) 22px; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 4px 12px 4px 8px; border: 0; border-bottom: 1px solid #ffffff09; background: transparent; text-align: left; }
+.order-row:hover { background: var(--hud-hover); }
+.order-row.is-selected { background: linear-gradient(90deg, color-mix(in srgb, var(--team-color) 34%, transparent), color-mix(in srgb, var(--team-color) 6%, transparent)); }
+.order-position { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.order-team { height: 18px; border-radius: 2px; background: var(--team-color); }
+.order-code { font-size: 13px; font-weight: 700; letter-spacing: .5px; }
+.order-name { min-width: 0; overflow: hidden; color: var(--hud-dim); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.order-number { color: var(--hud-dim); font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
+.order-row.is-selected .order-name, .order-row.is-selected .order-number { color: var(--hud-text); }
+.stopped-icon { justify-self: end; position: relative; width: 12px; height: 14px; border-radius: 8px 8px 2px 2px; background: #c6cdd0; }
+.stopped-icon::after { content: '··'; position: absolute; top: 0; left: 2px; color: var(--hud-ink); font-size: 16px; line-height: 10px; letter-spacing: 1px; }
+.order-message { margin: 0; padding: 20px 16px; color: var(--hud-dim); line-height: 1.6; }
+.order-footer { display: flex; justify-content: space-between; gap: 8px; margin: 0; padding: 9px 16px; border-top: 1px solid var(--hud-line); color: var(--hud-dim); font-size: 10px; }
+.order-footer a { font-weight: 700; letter-spacing: .7px; text-decoration: none; }
+.openf1-open { color: #fff; }
+.openf1-f1 { color: var(--accent); }
+
+/* Race notifications. */
+.notification-stack { position: absolute; z-index: 1; top: var(--hud-gap); right: var(--hud-gap); width: min(260px, calc(100% - 2 * var(--hud-gap))); display: flex; flex-direction: column; gap: 7px; pointer-events: none; }
+.race-toast { display: grid; gap: 3px; padding: 10px 13px; border: 1px solid var(--hud-line); border-radius: 5px; background: var(--hud-surface); backdrop-filter: var(--hud-blur); box-shadow: 0 6px 18px #0004; animation: toast-life 6s ease both; }
+.race-toast strong { color: #fff; font-size: 12px; font-weight: 700; }
+.race-toast > span { color: var(--hud-dim); font-size: 10px; }
+.overtake-heading { display: flex; flex-wrap: wrap; gap: 0 4px; }
+@keyframes toast-life { 0% { opacity: 0; transform: translateY(-16px); } 8%, 82% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-6px); } }
+
+/* Scene rail: camera on top, capture and preferences below, anchored bottom right. */
+.scene-rail { position: absolute; z-index: 1; right: var(--hud-gap); bottom: var(--hud-gap); display: grid; gap: 8px; }
+.rail-group { display: grid; gap: 2px; padding: 4px; border: 1px solid var(--hud-line); border-radius: var(--hud-radius); background: var(--hud-surface); backdrop-filter: var(--hud-blur); box-shadow: var(--hud-shadow); }
+.rail-group button { width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; }
+.rail-group button:hover:not(:disabled) { background: #ffffff1f; }
+.rail-group button[aria-pressed=true] { background: var(--hud-text); color: var(--hud-ink); }
+.quality-button span { font-size: 11px; font-weight: 800; letter-spacing: .4px; }
+
+/* Driver focus: a lower third in the driver's team colour. */
+.driver-focus { position: absolute; z-index: 1; bottom: var(--hud-gap); left: calc(var(--tower-space) + var(--hud-gap)); width: 300px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'position identity close' 'action action action'; align-items: center; gap: 10px 12px; padding: 10px 8px 12px 14px; border: 1px solid var(--hud-line); border-left: 4px solid var(--team-color); border-radius: var(--hud-radius); background: linear-gradient(100deg, color-mix(in srgb, var(--team-color) 24%, transparent), transparent 65%), var(--hud-surface); backdrop-filter: var(--hud-blur); box-shadow: var(--hud-shadow); }
+.focus-position { grid-area: position; font-family: var(--display-font); font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.focus-identity { grid-area: identity; display: grid; gap: 3px; min-width: 0; }
+.focus-identity strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.focus-identity span { overflow: hidden; color: var(--hud-dim); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.focus-close { grid-area: close; align-self: start; width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; }
+.focus-close:hover, .dock-skip:hover:not(:disabled) { background: #ffffff1c; }
+.focus-locate { grid-area: action; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; margin-right: 6px; border: 1px solid var(--hud-line-strong); border-radius: 5px; background: #ffffff10; font-size: 12px; font-weight: 700; }
+.focus-locate:hover { background: #ffffff24; }
+.focus-note { grid-area: action; margin: 0; color: var(--hud-dim); font-size: 11px; }
+
+/* Calls to action: start lights, start and results, centred in the free stage area. */
+.stage-cta { position: absolute; z-index: 1; top: 50%; left: calc(50% + var(--tower-space) / 2); transform: translate(-50%, -50%); }
+.cta-button { display: flex; align-items: center; gap: 12px; padding: 16px 26px; border: 0; border-radius: var(--hud-radius); background: var(--hud-text); color: var(--hud-ink); font-size: 14px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; white-space: nowrap; box-shadow: 0 10px 34px #0009; }
+.cta-button:hover { background: #fff; }
+.race-start-countdown { display: grid; justify-items: center; gap: 12px; padding: 16px 22px; border: 1px solid var(--hud-line); border-radius: var(--hud-radius); background: var(--hud-surface-solid); box-shadow: 0 10px 34px #0009; }
+.race-start-countdown > span { color: var(--hud-dim); font-size: 10px; font-weight: 700; letter-spacing: 2px; }
+.start-lights { display: flex; gap: 10px; padding: 12px; border: 1px solid #35414b; border-radius: 5px; background: #080c10; }
+.start-lights i { width: clamp(24px, 4vw, 36px); height: clamp(24px, 4vw, 36px); border: 2px solid #30343a; border-radius: 50%; background: #281013; box-shadow: inset 0 2px 6px #000; }
+.start-lights i.illuminated { border-color: #ff4545; background: #ff2020; box-shadow: 0 0 14px #ff202099, inset 0 0 8px #ff8989; }
+.play-icon { width: 0; height: 0; margin-left: 3px; border-block: 8px solid transparent; border-left: 12px solid var(--hud-ink); }
+.pause-icon { width: 13px; height: 16px; border-inline: 4px solid var(--hud-ink); }
+
+.unavailable-panel { position: absolute; z-index: 2; top: 50%; left: calc(50% + var(--tower-space) / 2); transform: translate(-50%, -50%); width: min(440px, calc(100% - var(--tower-space) - 2 * var(--hud-gap))); padding: 30px; text-align: center; border: 1px solid var(--hud-line); border-radius: 8px; background: var(--hud-surface-solid); box-shadow: 0 12px 40px #0008; }
+.unavailable-panel .section-eyebrow { color: var(--hud-dim); }
+.unavailable-panel h2 { margin: 12px 0 8px; font-size: 22px; }
+.unavailable-panel p { margin: 0 0 22px; color: var(--hud-dim); }
+.unavailable-panel button { min-height: 42px; padding: 0 18px; border: 0; border-radius: 5px; background: var(--hud-text); color: var(--hud-ink); font-weight: 700; }
+.race-unavailable .timing-tower { bottom: auto; }
+.race-unavailable .lap-counter, .race-unavailable .running-order, .race-unavailable .order-toggle, .race-unavailable .order-backdrop, .race-unavailable .replay-dock { display: none; }
+
+/* Replay dock: transport, timeline and speed in one row. */
+.replay-dock { z-index: 2; flex: 0 0 var(--dock-height); display: flex; align-items: center; gap: 14px; padding: 0 20px; border-top: 1px solid var(--hud-line); background: var(--hud-surface-solid); }
+.dock-transport { display: flex; align-items: center; gap: 6px; }
+.dock-play { width: 44px; height: 44px; flex: none; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--hud-text); }
+.dock-play:hover:not(:disabled) { background: #fff; }
+.dock-skip { width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; }
+.skip-icon.forward { transform: scaleX(-1); }
+.dock-time { flex: none; min-width: 62px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dock-time.is-total { color: var(--hud-dim); text-align: right; }
+.dock-speed { flex: none; min-width: 72px; min-height: 40px; }
+.timeline { flex: 1; min-width: 0; height: 28px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
+.timeline::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--hud-text) var(--progress), #ffffff2e var(--progress)); }
+.timeline::-moz-range-track { height: 4px; border-radius: 2px; background: #ffffff2e; }
+.timeline::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--hud-text); }
+.timeline::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; margin-top: -5px; border: 3px solid var(--hud-ink); border-radius: 50%; background: var(--hud-text); box-shadow: 0 0 0 1px var(--hud-text); }
+.timeline::-moz-range-thumb { width: 10px; height: 10px; border: 3px solid var(--hud-ink); border-radius: 50%; background: var(--hud-text); }
+
+/* Phones: the tower becomes a status bar under the race picker, the running order a drawer. */
+@media (max-width: 760px) {
+  :root { --hud-gap: 8px; }
+  .app-shell { height: auto; min-height: 100dvh; overflow: visible; }
+  .race-view { flex: 1 0 auto; display: flex; flex-direction: column; }
+  .race-stage { position: relative; inset: auto; flex: 1; min-height: 320px; }
+  .timing-tower { position: static; width: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: 'status lap toggle' 'weather weather weather'; align-items: center; column-gap: 10px; overflow: visible; padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); border: 0; border-bottom: 1px solid var(--hud-line); border-radius: 0; background: var(--hud-surface-solid); box-shadow: none; backdrop-filter: none; }
+  .race-title { display: none; }
+  .race-conditions { display: contents; }
+  .condition-status { grid-area: status; margin-block: 8px; padding: 8px 10px; border-radius: 4px; }
+  .condition-status strong { font-size: 13px; letter-spacing: .8px; }
+  .condition-weather { grid-area: weather; padding: 8px 2px; }
+  .lap-counter { grid-area: lap; grid-template-columns: auto; padding: 0; gap: 5px; }
+  .lap-title { display: none; }
+  .order-toggle { grid-area: toggle; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--hud-line); border-radius: var(--hud-radius); background: transparent; }
+  .running-order { position: absolute; z-index: 5; top: 0; bottom: 0; left: 0; width: min(340px, calc(100% - 48px)); border-right: 1px solid var(--hud-line); background: var(--hud-ink); transform: translateX(-102%); visibility: hidden; transition: transform .22s ease, visibility .22s; }
+  .running-order.is-open { transform: none; visibility: visible; }
+  .order-heading { position: static; width: auto; height: auto; display: flex; align-items: center; justify-content: space-between; overflow: visible; clip-path: none; padding: 6px 6px 6px 16px; border-bottom: 1px solid var(--hud-line); }
+  .order-close { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 4px; background: transparent; }
+  .order-backdrop { position: absolute; z-index: 4; inset: 0; display: block; width: 100%; border: 0; background: #0009; }
+  .order-row { min-height: 44px; padding-inline: 8px 14px; }
+  .order-name { font-size: 12px; }
+  .notification-stack { display: none; }
+  .rail-detail { display: none; }
+  .rail-group button { width: 44px; height: 44px; }
+  .driver-focus { right: calc(var(--hud-gap) * 2 + 54px); left: var(--hud-gap); width: auto; }
+  .focus-close { width: 44px; height: 44px; margin: -6px -4px 0 0; }
+  .focus-locate { min-height: 44px; }
+  .stage-cta, .unavailable-panel { left: 50%; }
+  .unavailable-panel { width: calc(100% - 2 * var(--hud-gap)); padding: 24px 18px; }
+  .replay-dock { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'transport time speed' 'transport timeline speed'; column-gap: 12px; padding: 8px max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .dock-transport { grid-area: transport; }
+  .dock-time { grid-area: time; min-width: 0; font-size: 11px; }
+  .timeline { grid-area: timeline; height: 24px; }
+  .dock-skip, .dock-time.is-total { display: none; }
+  .dock-speed { grid-area: speed; min-width: 64px; min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .race-toast, .tone-red .tone-swatch { animation: none; }
+  .lap-progress i, .running-order { transition: none; }
+}

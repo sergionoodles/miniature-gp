@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AppFooter } from './AppFooter'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
-import { TrackScene } from './TrackScene'
+import { TrackScene, type SceneHandle } from './TrackScene'
+import { TimingTower } from './TimingTower'
+import { RunningOrder } from './RunningOrder'
+import { DriverFocus, type DriverTracking } from './DriverFocus'
+import { ReplayDock } from './ReplayDock'
 import { PhotoReview } from './PhotoReview'
 import { RaceResults } from './RaceResults'
 import { RaceStartLights, START_LIGHT_COUNT, START_LIGHT_INTERVAL } from './RaceStartLights'
+import { raceStatusDisplay } from './raceHud'
 import { raceResults } from './raceResults'
 import { isCautionStatus, musicMoodFor } from './raceMusic'
 import { useRaceAudio } from './useRaceAudio'
 import { nextRaceAfter, nextSeason } from './nextRace'
 import type { RacePhotoHud, SceneCapture } from './racePhoto'
 import { createWeatherTimeline, describeWeather } from './raceWeather'
-import { isTimeShortcutTarget, SKIP_SECONDS, skipSecondsForKey } from './replayShortcuts'
+import { isTimeShortcutTarget, skipSecondsForKey } from './replayShortcuts'
 import { carLocation, clockLabel, isReplay, lapsAt, notificationsBetween, OVERTAKE_NOTIFICATION_CUTOFF, racePositionsAt, raceStatus, type Replay, type ReplayNotification } from './replay'
 
 type RaceOption = { id: string; url: string; label: string; circuit: string; grandPrix: string; location: string; countryCode: string; date: string; laps: number }
@@ -34,12 +39,8 @@ const DEFAULT_SPEED = 10
 const NOTIFICATION_DURATION = 6000
 const LOADER_STEP_DURATION = 500
 const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
-const START_PHASE_NOTICES: Record<string, string> = {
-  'Delayed start': 'Waiting for race control',
-  'Formation lap': 'The field is preparing for the start',
-  'Start suspended': 'The start procedure has been suspended',
-  'Waiting for start': 'Preparing for lights out',
-}
+// Matches the CSS breakpoint where the running order becomes a drawer over the circuit.
+const COMPACT_LAYOUT_QUERY = '(max-width: 760px)'
 const routeFromPath = (pathname: string) => {
   const match = pathname.match(/^\/(\d{4})\/([^/]+)\/?$/)
   return match ? { year: Number(match[1]), circuitSlug: match[2] } : null
@@ -87,6 +88,7 @@ export default function App() {
   const previousNotificationTimeRef = useRef(0)
   const isPlayingRef = useRef(false)
   const speedRef = useRef(DEFAULT_SPEED)
+  const sceneRef = useRef<SceneHandle>(null)
   const { audio, isSoundOn, toggleSound } = useRaceAudio()
 
   useEffect(() => {
@@ -414,10 +416,22 @@ export default function App() {
   const leaderLap = order[0]?.lap ?? 1
   const isRaining = conditions?.label === 'Rain'
   const selected = order.find((driver) => driver.number === selectedDriver)
-  const isSelectedStopped = selected ? stoppedAt(stops.get(selected.number) ?? [], time) !== null : false
+  const stoppedDrivers = new Set(order.filter((driver) => stoppedAt(stops.get(driver.number) ?? [], time) !== null).map((driver) => driver.number))
   const hasSelectedLocation = selected && replay ? time === 0 && !isPlaying
     ? replay.startingGrid.some(([driver]) => driver === selected.number)
     : carLocation(replay.locations[String(selected.number)] ?? [], time) !== null : false
+  const selectedTracking: DriverTracking = selected && stoppedDrivers.has(selected.number) ? 'stopped' : hasSelectedLocation ? 'tracked' : 'missing'
+  const statusDisplay = raceStatusDisplay(status, hasStarted)
+  const raceWeather = { symbol: conditions?.symbol ?? '☀', label: conditions?.label ?? 'Dry', airTemperature: weather?.airTemperature ?? null, trackTemperature: weather?.trackTemperature ?? null }
+  const orderTitle = isBeforeLaunch ? 'Starting order' : 'Running order'
+
+  const selectFromOrder = (driver: number | null) => {
+    setSelectedDriver(driver)
+    if (driver === null || !window.matchMedia(COMPACT_LAYOUT_QUERY).matches) return
+    // The drawer closes to reveal the car, so the focused row must not keep the rest of the field dimmed.
+    setIsOrderOpen(false)
+    setHoveredDriver(null)
+  }
 
   // The replay stays paused while the photo is reviewed, so the scene behind it is the moment taken.
   const takePhoto = (capture: SceneCapture) => {
@@ -528,33 +542,25 @@ export default function App() {
         </div>
       </header>
 
-      <main className="workspace">
-        <aside id="running-order-panel" className={`order-panel${isOrderOpen ? ' order-panel-open' : ''}`}>
-          <div className="panel-heading">
-            <span className="section-title">{isBeforeLaunch ? 'Starting order' : 'Running order'}</span>
-            <span className="lap-counter">Lap {leaderLap}/{race.laps}</span>
-            <button className="order-close" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)}>×</button>
-          </div>
-          <div className="order-hint">Hover to isolate · Select to locate</div>
-          <div className="order-list" role="region" tabIndex={0} aria-label="Running order">
-            {order.map((driver) => (
-              <button type="button" className={`driver-row${selectedDriver === driver.number ? ' selected' : ''}`} key={driver.number} aria-pressed={selectedDriver === driver.number} aria-label={`Highlight ${driver.name}, ${driver.position === 99 ? 'position unavailable' : `position ${driver.position}`}, ${driver.team}, number ${driver.number}${stoppedAt(stops.get(driver.number) ?? [], time) ? ', stopped car inferred from telemetry' : ''}`}  onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHoveredDriver(driver.number) }} onPointerLeave={() => setHoveredDriver(null)} onFocus={() => setHoveredDriver(driver.number)} onBlur={() => setHoveredDriver(null)} onClick={() => setSelectedDriver(selectedDriver === driver.number ? null : driver.number)}>
-                <span className="driver-position">{driver.position === 99 ? '–' : driver.position}</span>
-                <span className="team-marker" style={{ backgroundColor: driver.color }} />
-                <span className="driver-code">{driver.code}</span>
-                <span className="driver-name">{driver.name}<small>{driver.team}</small></span>
-                <span className="driver-number">{stoppedAt(stops.get(driver.number) ?? [], time) ? <span className="stopped-icon" role="img" aria-label="Stopped car inferred from telemetry" title="Stopped car inferred from telemetry">♧</span> : driver.number}</span>
-              </button>
-            ))}
-            {!replay && <div className="panel-message">{error ?? 'Loading race data…'}</div>}
-          </div>
-          <div className="data-credit">Recorded telemetry · <a href="https://openf1.org/" target="_blank" rel="noreferrer"><span className="openf1-open">Open</span><span className="openf1-f1">F1</span></a></div>
-        </aside>
+      <main className="race-view">
+        <TimingTower
+          location={race.location}
+          grandPrix={race.grandPrix}
+          dateLabel={formatRaceDate(race.date)}
+          lap={leaderLap}
+          totalLaps={race.laps}
+          orderTitle={orderTitle}
+          conditions={replay && !unavailable ? { status: statusDisplay, weather: raceWeather } : null}
+          isOrderOpen={isOrderOpen}
+          onOpenOrder={() => setIsOrderOpen(true)}
+        >
+          <RunningOrder title={orderTitle} drivers={order} selectedDriver={selectedDriver} stoppedDrivers={stoppedDrivers} isOpen={isOrderOpen} onHover={setHoveredDriver} onSelect={selectFromOrder} onClose={() => setIsOrderOpen(false)}>
+            {!replay && <p className="order-message">{error ?? 'Loading race data…'}</p>}
+          </RunningOrder>
+        </TimingTower>
 
         <section className="race-stage" aria-label="Race simulation">
-          <button className="order-toggle" type="button" aria-label="Open running order" aria-controls="running-order-panel" aria-expanded={isOrderOpen} onClick={() => setIsOrderOpen(true)}><span aria-hidden="true">☰</span></button>
-          {isOrderOpen && <button className="order-backdrop" type="button" aria-label="Close running order" onClick={() => setIsOrderOpen(false)} />}
-          {replay && weatherAt && <TrackScene key={race.id} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isSoundOn={isSoundOn} onToggleSound={toggleSound} />}
+          {replay && weatherAt && <TrackScene key={race.id} ref={sceneRef} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isSoundOn={isSoundOn} onToggleSound={toggleSound} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
             <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>
@@ -563,23 +569,7 @@ export default function App() {
               {LOADER_STEPS.map((step, index) => <li className={index === activeLoaderStep ? 'active' : undefined} aria-current={index === activeLoaderStep ? 'step' : undefined} key={step}>{step}</li>)}
             </ol>
           </div>}
-          <div className="stage-topline">
-            <div className="stage-title">
-              <h1 className={race.location.length > 12 ? 'long-circuit-name' : undefined}>{race.location}</h1>
-              <span>{race.grandPrix} <b>·</b> {formatRaceDate(race.date)}</span>
-            </div>
-          </div>
           {unavailable && <div className="unavailable-panel" role="status"><span className="section-eyebrow">RACE DATA UNAVAILABLE</span><h2>We don’t have data for {year}.</h2><p>The circuit is shown using an earlier race.</p>{pastRace && <button type="button" onClick={() => { setRequestedCircuitSlug(circuitSlug(pastRace.race.circuit)); setYear(pastRace.year) }}>Show the {pastRace.year} race at this circuit</button>}</div>}
-          <div className="stage-conditions">
-            <div className="status-chip"><span className="status-dot" />{status}</div>
-            <div className="weather-chip">
-              <span className="weather-symbol" aria-hidden="true">{conditions?.symbol ?? '☀'}</span>
-              <span>{conditions?.label ?? 'Dry'}</span>
-              {weather && <span className="weather-details">Air {weather.airTemperature.toFixed(1)}° · Track {weather.trackTemperature.toFixed(1)}°</span>}
-            </div>
-          </div>
-          {hasStarted && status === 'Red flag' && <div className="race-notice">Race suspended <span>Cars held in the pit lane</span></div>}
-          {hasStarted && START_PHASE_NOTICES[status] && <div className="race-notice">{status} <span>{START_PHASE_NOTICES[status]}</span></div>}
           <div className="notification-stack" aria-label="Race notifications" aria-live="polite">
             {notifications.map((notice) => <div className="race-toast" key={notice.id}>
               {notice.drivers
@@ -588,37 +578,17 @@ export default function App() {
               {notice.detail && <span>{notice.detail}</span>}
             </div>)}
           </div>
-          {replay && (!hasStarted || countdown !== null) && <div className="race-start-hud">
-            {countdown === null ? <button className="race-start-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start replay</button> : <RaceStartLights countdown={countdown} />}
+          {replay && !unavailable && (!hasStarted || countdown !== null) && <div className="stage-cta">
+            {countdown === null ? <button className="cta-button" type="button" onClick={() => setPlayback(true)}><span className="play-icon" aria-hidden="true" /> Start replay</button> : <RaceStartLights countdown={countdown} />}
           </div>}
-          {replay && !unavailable && !isResultsOpen && time >= replay.duration && <div className="race-start-hud">
-            <button className="race-start-button" type="button" onClick={() => setIsResultsOpen(true)}><span className="results-button-flag" aria-hidden="true" /> Race results</button>
+          {replay && !unavailable && !isResultsOpen && time >= replay.duration && <div className="stage-cta">
+            <button className="cta-button" type="button" onClick={() => setIsResultsOpen(true)}><span className="results-button-flag" aria-hidden="true" /> Race results</button>
           </div>}
-          {selected && <div className="selection-card">
-            <div><span className="section-eyebrow">DRIVER IN FOCUS</span><button type="button" aria-label="Clear driver selection" onClick={() => setSelectedDriver(null)}>×</button></div>
-            <strong>{selected.name} <span>#{selected.number}</span></strong>
-            <p>{selected.team} · P{selected.position === 99 ? '–' : selected.position} · Lap {selected.lap}</p>
-            <small>{isSelectedStopped ? 'Stopped car · inferred from telemetry' : hasSelectedLocation ? 'Highlighted on the circuit' : 'Location unavailable at this replay time'}</small>
-          </div>}
-          <div className="stage-bottomline"><span>Drag to orbit <b>·</b> Scroll to zoom</span><span>Ghost = inferred stop · Recorded locations</span></div>
+          {selected && !unavailable && <DriverFocus driver={selected} tracking={selectedTracking} onLocate={() => sceneRef.current?.locateSelectedDriver()} onClose={() => setSelectedDriver(null)} />}
         </section>
       </main>
 
-      <footer className="transport">
-        <div className="replay-label"><span className="section-eyebrow">SESSION REPLAY</span><strong>{countdown !== null ? 'Starting' : isPlaying ? 'Playing' : 'Paused'} <span className={isPlaying ? 'playback-dot active' : 'playback-dot'} /></strong></div>
-        <div className="transport-controls">
-          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(-SKIP_SECONDS)} aria-label="Back 1 minute" title="Back 1 minute (←)"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 9a1 1 0 0 1-1-1V4.707a.707.707 0 0 0-1.207-.5l-6.94 6.94a1.207 1.207 0 0 0 0 1.707l6.94 6.94a.707.707 0 0 0 1.207-.5V16a1 1 0 0 1 1-1h2a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1z" /><path d="M20 9v6" /></svg></button>
-          <button className="play-button" type="button" disabled={!replay} onClick={() => setPlayback(countdown === null && !isPlaying)} aria-label={countdown !== null ? 'Cancel race start' : isPlaying ? 'Pause replay' : 'Play replay'}>
-            {isPlaying || countdown !== null ? <span className="pause-icon" /> : <span className="play-icon" />}
-          </button>
-          <button className="skip-button" type="button" disabled={!replay} onClick={() => skip(SKIP_SECONDS)} aria-label="Forward 1 minute" title="Forward 1 minute (→)"><svg className="skip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 9a1 1 0 0 0 1-1V4.707a.707.707 0 0 1 1.207-.5l6.94 6.94a1.207 1.207 0 0 1 0 1.707l-6.94 6.94a.707.707 0 0 1-1.207-.5V16a1 1 0 0 0-1-1H9a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" /><path d="M4 9v6" /></svg></button>
-        </div>
-        <div className="timeline-wrap">
-          <div className="time-labels"><span>{clockLabel(time)}</span><span>{replay ? clockLabel(replay.duration) : '00:00:00'}</span></div>
-          <input className="timeline" type="range" aria-label="Replay position" min="0" max={replay?.duration ?? 1} step="0.1" value={time} disabled={!replay} onChange={(event) => seek(Number(event.target.value))} style={{ '--progress': `${replay ? time / replay.duration * 100 : 0}%` } as React.CSSProperties} />
-        </div>
-        <label className="speed-picker">Speed<select aria-label="Replay speed" value={speed} onChange={(event) => changeSpeed(Number(event.target.value))}>{SPEEDS.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
-      </footer>
+      <ReplayDock time={time} duration={replay?.duration ?? null} isPlaying={isPlaying} isCountingDown={countdown !== null} speed={speed} speeds={SPEEDS} onTogglePlayback={() => setPlayback(countdown === null && !isPlaying)} onSkip={skip} onSeek={seek} onSpeedChange={changeSpeed} />
       {isResultsOpen && !unavailable && results.length > 0 && <RaceResults results={results} grandPrix={race.grandPrix} location={race.location} year={race.date.slice(0, 4)} nextRaceLocation={nextRace?.race.location ?? null} onNextRace={goToNextRace} onClose={() => setIsResultsOpen(false)} />}
       {photo && <PhotoReview capture={photo.capture} hud={photo.hud} onClose={closePhoto} />}
       <AppFooter showTelemetry />

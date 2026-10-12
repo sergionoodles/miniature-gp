@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type Ref, type RefObject } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { carLocation, type Replay } from './replay'
@@ -22,6 +22,8 @@ const STANDARD_FRAME_MS = 30
 const COMPACT_LAYOUT_WIDTH = 760
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
+type CameraView = 'overview' | 'top'
+export type SceneHandle = { locateSelectedDriver: () => void }
 type CameraPose = { position: THREE.Vector3, target: THREE.Vector3, zoom: number }
 type Handoff = { image: HTMLCanvasElement, isFading: boolean }
 type Props = {
@@ -40,9 +42,10 @@ type Props = {
   isOrbiting?: boolean
   isSoundOn: boolean
   onToggleSound: () => void
+  ref?: Ref<SceneHandle>
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isSoundOn, onToggleSound }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isSoundOn, onToggleSound, ref }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid, isOrbiting })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
@@ -51,12 +54,14 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   const snapshotRef = useRef<() => HTMLCanvasElement | null>(() => null)
   // Changing quality rebuilds the scene; this carries the camera over so only the graphics change.
   const poseToRestoreRef = useRef<CameraPose | null>(null)
-  const [view, setView] = useState<'overview' | 'top'>('overview')
+  const [view, setView] = useState<CameraView>('overview')
   const [quality, setQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
   const [error, setError] = useState<string | null>(null)
   const [handoff, setHandoff] = useState<Handoff | null>(null)
 
   useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, showStartingGrid, isOrbiting } }, [selectedDriver, hoveredDriver, showStartingGrid, isOrbiting])
+
+  useImperativeHandle(ref, () => ({ locateSelectedDriver: () => actionRef.current('locate') }), [])
 
   useEffect(() => {
     const container = containerRef.current
@@ -292,7 +297,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     saveGraphicsQuality(next)
   }
 
-  const changeView = (next: 'overview' | 'top') => {
+  const changeView = (next: CameraView) => {
     setView(next)
     actionRef.current(next)
   }
@@ -306,33 +311,40 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     <div className="track-canvas" ref={containerRef} />
     {handoff && <SceneHandoff image={handoff.image} isFading={handoff.isFading} onFaded={() => setHandoff(null)} />}
     {error && <div className="scene-error" role="alert">{error}</div>}
-    {selectedDriver !== null && <button className="locate-driver" type="button" disabled={showStartingGrid ? !replay.startingGrid.some(([driver]) => driver === selectedDriver) : !carLocation(replay.locations[String(selectedDriver)] ?? [], timeRef.current) || stoppedAt(stops.get(selectedDriver) ?? [], timeRef.current) !== null} onClick={() => actionRef.current('locate')}>⌖ Locate driver</button>}
-    <div className="camera-toolbar" aria-label="Camera controls" role="group">
-      <div className="view-switch">
-        <button type="button" className="photo-button" aria-label="Take a photo" disabled={error !== null} title="Take a photo of the race as framed" onClick={takePhoto}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><path d="M4 7.5h3.2L9 5h6l1.8 2.5H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.6" /></svg>
-          <span>Photo</span>
+    <div className="scene-rail" role="toolbar" aria-label="Camera and view" aria-orientation="vertical">
+      <div className="rail-group camera-group">
+        <button type="button" aria-label="Top view" aria-pressed={view === 'top'} title="Top view" onClick={() => changeView(view === 'top' ? 'overview' : 'top')}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 12h16M12 4v16" /></svg>
+        </button>
+        <button className="rail-detail" type="button" aria-label="Rotate left" title="Rotate left" onClick={() => actionRef.current('left')}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
+        </button>
+        <button className="rail-detail" type="button" aria-label="Rotate right" title="Rotate right" onClick={() => actionRef.current('right')}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
+        </button>
+        <button className="rail-detail" type="button" aria-label="Zoom in" title="Zoom in" onClick={() => actionRef.current('in')}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+        <button className="rail-detail" type="button" aria-label="Zoom out" title="Zoom out" onClick={() => actionRef.current('out')}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
+        </button>
+        <button type="button" aria-label="Reset camera" title="Reset camera" onClick={() => changeView(view)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9V5a2 2 0 0 1 2-2h4M15 3h4a2 2 0 0 1 2 2v4M21 15v4a2 2 0 0 1-2 2h-4M9 21H5a2 2 0 0 1-2-2v-4" /><circle cx="12" cy="12" r="2.5" /></svg>
         </button>
       </div>
-      <div className="view-switch">
-        <button type="button" aria-pressed={quality === 'high'} title={quality === 'high' ? 'High graphics: effects, shadows and ambient occlusion. Select for a lighter mode.' : 'Standard graphics: a lighter scene for any computer. Select for high graphics.'} onClick={toggleQuality}>✦ <span>HD graphics</span></button>
-        <button type="button" className="sound-button" aria-label="Sound" aria-pressed={isSoundOn} title={isSoundOn ? 'Sound on: race music and effects. Select to mute.' : 'Sound off. Select to play race music and effects.'} onClick={onToggleSound}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <div className="rail-group">
+        <button type="button" aria-label="Take a photo" disabled={error !== null} title="Take a photo of the race as framed" onClick={takePhoto}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3.2L9 5h6l1.8 2.5H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.6" /></svg>
+        </button>
+        <button className="quality-button" type="button" aria-label="HD graphics" aria-pressed={quality === 'high'} title={quality === 'high' ? 'High graphics: effects, shadows and ambient occlusion. Select for a lighter mode.' : 'Standard graphics: a lighter scene for any computer. Select for high graphics.'} onClick={toggleQuality}>
+          <span aria-hidden="true">HD</span>
+        </button>
+        <button type="button" aria-label="Sound" aria-pressed={isSoundOn} title={isSoundOn ? 'Sound on: race music and effects. Select to mute.' : 'Sound off. Select to play race music and effects.'} onClick={onToggleSound}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" />
             {isSoundOn ? <><path d="M16 9a5 5 0 0 1 0 6" /><path d="M19.364 18.364a9 9 0 0 0 0-12.728" /></> : <path d="m22 9-6 6m0-6 6 6" />}
           </svg>
         </button>
-      </div>
-      <div className="view-switch camera-views">
-        <button type="button" aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>◈ <span>Orbit</span></button>
-        <button type="button" aria-pressed={view === 'top'} onClick={() => changeView('top')}>⊞ <span>Top view</span></button>
-      </div>
-      <div className="zoom-controls">
-        <button type="button" aria-label="Rotate left" onClick={() => actionRef.current('left')}>↶</button>
-        <button type="button" aria-label="Rotate right" onClick={() => actionRef.current('right')}>↷</button>
-        <button type="button" aria-label="Zoom out" onClick={() => actionRef.current('out')}>−</button>
-        <button type="button" aria-label="Zoom in" onClick={() => actionRef.current('in')}>+</button>
-        <button type="button" aria-label="Reset camera" onClick={() => changeView('overview')}>⌖</button>
       </div>
     </div>
   </>
