@@ -156,6 +156,24 @@ it('suppresses overtakes when a start phase has no confirmed launch', () => {
   expect(notificationsBetween(replay, 0, 20).some(({ id }) => id.startsWith('overtake-'))).toBe(false)
 })
 
+it('spells out Virtual Safety Car in deployment and ending notifications', () => {
+  const replay: Replay = {
+    sessionKey: 1, start: '2026-09-06', duration: 30,
+    track: [], locations: {}, positions: [], laps: [], stints: [],
+    startingGrid: [], startingGridSource: 'position',
+    drivers: [], overtakes: [], pits: [], weather: [],
+    raceControl: [
+      [10, 'SafetyCar', null, 'VSC DEPLOYED'],
+      [20, 'SafetyCar', null, 'VSC ENDING'],
+      [30, 'SafetyCar', null, 'SAFETY CAR DEPLOYED'],
+    ],
+  }
+
+  expect(notificationsBetween(replay, 0, 30).map(({ title }) => title)).toEqual([
+    'Virtual Safety Car deployed', 'Virtual Safety Car ending', 'Safety car deployed',
+  ])
+})
+
 it('requires grid and overtake data in a replay', () => {
   const replay = { duration: 10, start: '2026-09-06', drivers: [], track: [], locations: {}, positions: [], laps: [], pits: [], weather: [], raceControl: [], startingGrid: [], startingGridSource: 'position', overtakes: [] }
   expect(isReplay(replay)).toBe(true)

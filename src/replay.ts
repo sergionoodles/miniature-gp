@@ -213,7 +213,7 @@ export function notificationsBetween(replay: Replay, from: number, to: number, s
       : category === 'Flag' && flag ? `${flag[0]}${flag.slice(1).toLowerCase()} flag`
       : message === 'SESSION ABORTED' ? 'Race suspended'
       : message === 'SESSION STARTED' && time > 0 && !hasStartPhases ? 'Race resumed'
-      : category === 'SafetyCar' ? message === 'VSC ENDING' ? 'Virtual safety car ending' : message.toLowerCase().replace(/^./, (letter) => letter.toUpperCase())
+      : category === 'SafetyCar' ? message.toLowerCase().replace(/^./, (letter) => letter.toUpperCase()).replace(/\bVsc\b/i, 'Virtual Safety Car')
       : null
     if (title) notifications.push({ id: `control-${index}`, time, title, detail: category === 'Flag' ? message : '' })
   })
