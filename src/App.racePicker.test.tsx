@@ -242,3 +242,58 @@ it('only changes the race and route after a Grand Prix is selected in the browse
   expect(document.title).toContain('Monza 2026')
   expect(pushState).toHaveBeenCalledTimes(1)
 })
+
+it('loads the exact embedded race and preserves its embed URL', async () => {
+  stubBrowser()
+  window.location.pathname = '/embed/2025/monza/'
+  const requestedRace = race(2025, 'requested', 'Monza')
+  const latestRace = { ...race(2025, 'latest', 'Lusail'), date: '2025-11-30' }
+  const fetchData = vi.fn(async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2026, 2025])
+    if (url === '/data/2025/races-2025.json') return Response.json([latestRace, requestedRace])
+    if (url === requestedRace.url) return Response.json(replay)
+    return new Response(null, { status: 404 })
+  })
+  vi.stubGlobal('fetch', fetchData)
+
+  const tree = await renderApp()
+
+  expect(document.title).toContain('Monza 2025')
+  expect(fetchData.mock.calls.map(([url]) => url)).toContain(requestedRace.url)
+  expect(fetchData.mock.calls.map(([url]) => url)).not.toContain(latestRace.url)
+  expect(window.history.replaceState).toHaveBeenLastCalledWith(null, '', '/embed/2025/monza/')
+  expect(findSelect(tree, 'Season')).toBeUndefined()
+  expect(findSelect(tree, 'Grand Prix')).toBeUndefined()
+})
+
+it('shows an error for an unknown embedded race without substituting another race', async () => {
+  stubBrowser()
+  window.location.pathname = '/embed/2025/unknown/'
+  const availableRace = race(2025, 'available', 'Monza')
+  const fetchData = vi.fn(async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2026, 2025])
+    return Response.json([availableRace])
+  })
+  vi.stubGlobal('fetch', fetchData)
+
+  const tree = await renderApp()
+
+  expect(textContent(tree)).toContain('The requested race could not be loaded.')
+  expect(fetchData.mock.calls.map(([url]) => url)).toEqual(['/data/years.json', '/data/2025/races-2025.json'])
+  expect(window.history.replaceState).not.toHaveBeenCalled()
+})
+
+it('keeps an unavailable embedded season fixed rather than switching to the latest season', async () => {
+  stubBrowser()
+  window.location.pathname = '/embed/2023/monza/'
+  const fetchData = vi.fn(async (url: string) => url === '/data/years.json'
+    ? Response.json([2026, 2025])
+    : new Response(null, { status: 404 }))
+  vi.stubGlobal('fetch', fetchData)
+
+  const tree = await renderApp()
+
+  expect(textContent(tree)).toContain('The requested race could not be loaded.')
+  expect(fetchData.mock.calls.map(([url]) => url)).toEqual(['/data/years.json', '/data/2023/races-2023.json'])
+  expect(window.history.replaceState).not.toHaveBeenCalled()
+})

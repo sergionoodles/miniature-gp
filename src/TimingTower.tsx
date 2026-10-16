@@ -13,18 +13,22 @@ type Props = {
   conditions: { status: RaceStatusDisplay; weather: RaceWeather } | null
   isOrderOpen: boolean
   onOpenOrder: () => void
+  shareControl: ReactNode
   // The running order, which becomes a drawer on phones.
   children: ReactNode
 }
 
-export function TimingTower({ location, grandPrix, dateLabel, lap, totalLaps, orderTitle, conditions, isOrderOpen, onOpenOrder, children }: Props) {
+export function TimingTower({ location, grandPrix, dateLabel, lap, totalLaps, orderTitle, conditions, isOrderOpen, onOpenOrder, shareControl, children }: Props) {
   const progress = Math.min(1, lap / Math.max(1, totalLaps))
 
   return (
     <aside className="timing-tower" aria-label="Race and running order">
       <div className="race-title">
-        {/* The name's length sets its size, so every circuit fits on one line. */}
-        <h1 style={{ '--name-length': location.length } as React.CSSProperties}>{location}</h1>
+        <div className="race-title-heading">
+          {/* The name's length sets its size, so every circuit fits on one line. */}
+          <h1 style={{ '--name-length': location.length } as React.CSSProperties}>{location}</h1>
+          {shareControl}
+        </div>
         <p>{grandPrix} · {dateLabel}</p>
       </div>
 

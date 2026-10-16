@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AppFooter } from './AppFooter'
+import { EmbedHeader } from './EmbedHeader'
+import { circuitSlug, racePath, routeFromPath } from './raceRoutes'
 import { detectStoppedCars, stoppedAt, type StoppedInterval } from './stoppedCars'
 import { TrackScene, type SceneHandle } from './TrackScene'
 import { TimingTower } from './TimingTower'
+import { RaceShare } from './RaceShare'
 import { RunningOrder } from './RunningOrder'
 import { DriverFocus, type DriverTracking } from './DriverFocus'
 import { ReplayDock } from './ReplayDock'
@@ -41,19 +44,8 @@ const LOADER_STEP_DURATION = 500
 const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparing the 3D scene…']
 // Matches the CSS breakpoint where the running order becomes a drawer over the circuit.
 const COMPACT_LAYOUT_QUERY = '(max-width: 760px)'
-const routeFromPath = (pathname: string) => {
-  const match = pathname.match(/^\/(\d{4})\/([^/]+)\/?$/)
-  return match ? { year: Number(match[1]), circuitSlug: match[2] } : null
-}
-const circuitSlug = (circuit: string) => circuit
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-|-$/g, '')
-const racePath = (year: number, race: RaceOption) => `/${year}/${circuitSlug(race.circuit)}`
-
 export default function App() {
+  const isEmbed = routeFromPath(window.location.pathname)?.isEmbed ?? false
   const [years, setYears] = useState([2026])
   const [year, setYear] = useState(() => routeFromPath(window.location.pathname)?.year ?? 2026)
   const [requestedCircuitSlug, setRequestedCircuitSlug] = useState(() => routeFromPath(window.location.pathname)?.circuitSlug ?? null)
@@ -89,7 +81,7 @@ export default function App() {
   const isPlayingRef = useRef(false)
   const speedRef = useRef(DEFAULT_SPEED)
   const sceneRef = useRef<SceneHandle>(null)
-  const { audio, isSoundOn, toggleSound } = useRaceAudio()
+  const { audio, isSoundOn, toggleSound } = useRaceAudio({ initialSoundEnabled: isEmbed ? true : undefined })
 
   useEffect(() => {
     document.title = `${race.grandPrix} ${year} | Miniature GP`
@@ -117,7 +109,7 @@ export default function App() {
     setIsResultsOpen(false)
     setRaceId(nextRaceId)
     const nextRace = options.find((option) => option.id === nextRaceId)
-    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(nextYear, nextRace))
+    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(nextYear, nextRace, isEmbed))
   }
 
   useEffect(() => {
@@ -131,7 +123,7 @@ export default function App() {
         if (!Array.isArray(value) || !value.length || !value.every((item) => Number.isInteger(item))) throw new Error('Season index is invalid.')
         const availableYears = [...value].sort((first: number, second: number) => second - first)
         setYears(availableYears)
-        setYear((current) => availableYears.includes(current) ? current : availableYears[0])
+        if (!isEmbed) setYear((current) => availableYears.includes(current) ? current : availableYears[0])
       })
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === 'AbortError') return
@@ -155,14 +147,19 @@ export default function App() {
         const options = [...value].sort((first, second) => second.date.localeCompare(first.date))
         setRaces(options)
         const requestedRace = requestedCircuitSlug ? options.find((option) => circuitSlug(option.circuit) === requestedCircuitSlug) : undefined
+        if (isEmbed && !requestedRace) throw new Error('The requested race is not available.')
         const nextRace = requestedRace ?? options[0]
         selectRace(nextRace.id, options, false)
         setLoadedCatalogKey(catalogKey)
-        window.history.replaceState(null, '', racePath(year, nextRace))
+        window.history.replaceState(null, '', racePath(year, nextRace, isEmbed))
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return
         if (cause instanceof DOMException && cause.name === 'AbortError') return
+        if (isEmbed) {
+          setError('The requested race could not be loaded. Open the full replay or refresh to try again.')
+          return
+        }
         console.error('Using bundled race list:', cause)
         if (year === 2026) {
           setRaces(FALLBACK_RACES)
@@ -173,7 +170,7 @@ export default function App() {
         setError(`Race data could not be loaded for ${year}. Please refresh to try again.`)
       })
     return () => controller.abort()
-  }, [year, requestedCircuitSlug, catalogKey])
+  }, [year, requestedCircuitSlug, catalogKey, isEmbed])
 
   useEffect(() => {
     setPickerYear(year)
@@ -470,7 +467,7 @@ export default function App() {
 
   // The last race of a season continues into the next one, whose catalog isn't loaded yet.
   useEffect(() => {
-    if (!isResultsOpen || seasonNextRace || followingSeason === null) return
+    if (isEmbed || !isResultsOpen || seasonNextRace || followingSeason === null) return
     const controller = new AbortController()
     fetch(`/data/${followingSeason}/races-${followingSeason}.json`, { signal: controller.signal })
       .then((response) => {
@@ -487,7 +484,7 @@ export default function App() {
         console.error('The next season could not be loaded:', cause)
       })
     return () => controller.abort()
-  }, [isResultsOpen, seasonNextRace, followingSeason, race])
+  }, [isEmbed, isResultsOpen, seasonNextRace, followingSeason, race])
 
   const goToNextRace = () => {
     if (!nextRace) return
@@ -523,9 +520,13 @@ export default function App() {
     return () => window.clearTimeout(timeout)
   }, [race.id, loaderRun])
 
+  const runningOrder = <RunningOrder title={isEmbed ? 'Order' : orderTitle} drivers={order} selectedDriver={selectedDriver} stoppedDrivers={stoppedDrivers} isOpen={!isEmbed && isOrderOpen} onHover={setHoveredDriver} onSelect={selectFromOrder} onClose={() => setIsOrderOpen(false)}>
+    {!replay && <p className="order-message">{isEmbed ? '—' : error ?? 'Loading race data…'}</p>}
+  </RunningOrder>
+
   return (
-    <div className={`app-shell${isRaining ? ' raining' : ''}${unavailable ? ' race-unavailable' : ''}`}>
-      <header className="topbar">
+    <div className={`app-shell${isEmbed ? ' embed-shell' : ''}${isRaining ? ' raining' : ''}${unavailable ? ' race-unavailable' : ''}`}>
+      {isEmbed ? <EmbedHeader location={race.location} grandPrix={race.grandPrix} year={year} lap={leaderLap} totalLaps={race.laps} status={replay && !unavailable ? statusDisplay : null} replayPath={racePath(year, race)} /> : <header className="topbar">
         <div className="identity">
           <img className="identity-mark" src="/logo.svg" alt="" />
           <div>
@@ -540,10 +541,10 @@ export default function App() {
             {pickerRaces.map((option) => <option key={option.id} value={option.id}>{option.label}{option.date ? ` · ${formatRaceDate(option.date)}` : ''}</option>)}
           </select></label>
         </div>
-      </header>
+      </header>}
 
       <main className="race-view">
-        <TimingTower
+        {isEmbed ? <aside className="embed-order" aria-label="Race positions">{runningOrder}</aside> : <TimingTower
           location={race.location}
           grandPrix={race.grandPrix}
           dateLabel={formatRaceDate(race.date)}
@@ -553,25 +554,24 @@ export default function App() {
           conditions={replay && !unavailable ? { status: statusDisplay, weather: raceWeather } : null}
           isOrderOpen={isOrderOpen}
           onOpenOrder={() => setIsOrderOpen(true)}
+          shareControl={<RaceShare key={`${year}/${race.circuit}`} year={year} race={race} />}
         >
-          <RunningOrder title={orderTitle} drivers={order} selectedDriver={selectedDriver} stoppedDrivers={stoppedDrivers} isOpen={isOrderOpen} onHover={setHoveredDriver} onSelect={selectFromOrder} onClose={() => setIsOrderOpen(false)}>
-            {!replay && <p className="order-message">{error ?? 'Loading race data…'}</p>}
-          </RunningOrder>
-        </TimingTower>
+          {runningOrder}
+        </TimingTower>}
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay && weatherAt && <TrackScene key={race.id} ref={sceneRef} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isSoundOn={isSoundOn} onToggleSound={toggleSound} />}
+          {replay && weatherAt && <TrackScene key={race.id} ref={sceneRef} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isSoundOn={isSoundOn} onToggleSound={toggleSound} isEmbed={isEmbed} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
             <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>
             <h2>{error ?? `${race.location} ${year}`}</h2>
-            <ol className="loader-steps">
+            {!error && <ol className="loader-steps">
               {LOADER_STEPS.map((step, index) => <li className={index === activeLoaderStep ? 'active' : undefined} aria-current={index === activeLoaderStep ? 'step' : undefined} key={step}>{step}</li>)}
-            </ol>
+            </ol>}
           </div>}
           {unavailable && <div className="unavailable-panel" role="status"><span className="section-eyebrow">RACE DATA UNAVAILABLE</span><h2>We don’t have data for {year}.</h2><p>The circuit is shown using an earlier race.</p>{pastRace && <button type="button" onClick={() => { setRequestedCircuitSlug(circuitSlug(pastRace.race.circuit)); setYear(pastRace.year) }}>Show the {pastRace.year} race at this circuit</button>}</div>}
           <div className="notification-stack" aria-label="Race notifications" aria-live="polite">
-            {notifications.map((notice) => <div className="race-toast" key={notice.id}>
+            {(isEmbed ? notifications.slice(0, 1) : notifications).map((notice) => <div className="race-toast" key={notice.id}>
               {notice.drivers
                 ? <strong className="overtake-heading"><span style={{ color: notice.drivers[0].color }}>{notice.drivers[0].name}</span><span>passed</span><span style={{ color: notice.drivers[1].color }}>{notice.drivers[1].name}</span></strong>
                 : <strong>{notice.title}</strong>}
@@ -585,13 +585,19 @@ export default function App() {
             <button className="cta-button" type="button" onClick={() => setIsResultsOpen(true)}><span className="results-button-flag" aria-hidden="true" /> Race results</button>
           </div>}
           {selected && !unavailable && <DriverFocus driver={selected} tracking={selectedTracking} onLocate={() => sceneRef.current?.locateSelectedDriver()} onClose={() => setSelectedDriver(null)} />}
+          {isEmbed && isResultsOpen && !unavailable && <div className="stage-cta embed-finish">
+            <span>Replay finished</span>
+            <button className="cta-button" type="button" onClick={() => { setIsResultsOpen(false); seek(0); setPlayback(true) }}>Replay again</button>
+            <a href={racePath(year, race)} target="_blank" rel="noopener noreferrer">Full replay ↗</a>
+            <button type="button" className="embed-finish-close" onClick={() => setIsResultsOpen(false)} aria-label="Close replay summary">×</button>
+          </div>}
         </section>
       </main>
 
       <ReplayDock time={time} duration={replay?.duration ?? null} isPlaying={isPlaying} isCountingDown={countdown !== null} speed={speed} speeds={SPEEDS} onTogglePlayback={() => setPlayback(countdown === null && !isPlaying)} onSkip={skip} onSeek={seek} onSpeedChange={changeSpeed} />
-      {isResultsOpen && !unavailable && results.length > 0 && <RaceResults results={results} grandPrix={race.grandPrix} location={race.location} year={race.date.slice(0, 4)} nextRaceLocation={nextRace?.race.location ?? null} onNextRace={goToNextRace} onClose={() => setIsResultsOpen(false)} />}
+      {!isEmbed && isResultsOpen && !unavailable && results.length > 0 && <RaceResults results={results} grandPrix={race.grandPrix} location={race.location} year={race.date.slice(0, 4)} nextRaceLocation={nextRace?.race.location ?? null} onNextRace={goToNextRace} onClose={() => setIsResultsOpen(false)} />}
       {photo && <PhotoReview capture={photo.capture} hud={photo.hud} onClose={closePhoto} />}
-      <AppFooter showTelemetry />
+      {!isEmbed && <AppFooter showTelemetry />}
     </div>
   )
 }

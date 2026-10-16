@@ -1,0 +1,19 @@
+import { expect, it } from 'vitest'
+import { circuitSlug, racePath, routeFromPath } from './raceRoutes'
+
+it('keeps full replay and static embed URLs tied to the same race', () => {
+  const race = { circuit: 'São Paulo' }
+  expect(circuitSlug(race.circuit)).toBe('sao-paulo')
+  expect(racePath(2025, race)).toBe('/2025/sao-paulo')
+  expect(racePath(2025, race, true)).toBe('/embed/2025/sao-paulo/')
+  expect(routeFromPath('/2025/sao-paulo')).toEqual({ year: 2025, circuitSlug: 'sao-paulo', isEmbed: false })
+  for (const path of ['/embed/2025/sao-paulo', '/embed/2025/sao-paulo/', '/embed/2025/sao-paulo/index.html']) {
+    expect(routeFromPath(path)).toEqual({ year: 2025, circuitSlug: 'sao-paulo', isEmbed: true })
+  }
+})
+
+it('rejects paths that do not identify a race', () => {
+  for (const path of ['/', '/embed/', '/embed/no/monza/', '/embed/2025/monza/other', '/privacy']) {
+    expect(routeFromPath(path)).toBeNull()
+  }
+})

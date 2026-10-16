@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { createRaceAudio } from './raceAudio'
 import { loadSoundPreference, saveSoundPreference } from './audioPreferences'
 
-// Restore the preference immediately, but wait for a gesture before starting browser audio.
-export function useRaceAudio() {
+// Widgets can start with sound enabled; browser audio still waits for a gesture.
+export function useRaceAudio({ initialSoundEnabled }: { initialSoundEnabled?: boolean } = {}) {
   const [audio] = useState(createRaceAudio)
-  const [isSoundOn, setIsSoundOn] = useState(loadSoundPreference)
+  const [isSoundOn, setIsSoundOn] = useState(() => initialSoundEnabled ?? loadSoundPreference())
 
   useEffect(() => () => audio.dispose(), [audio])
 

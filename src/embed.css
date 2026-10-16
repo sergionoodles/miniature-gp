@@ -1,0 +1,102 @@
+/* The embed owns its viewport, including inside a short iframe. */
+.embed-shell {
+  --embed-order-width: 68px;
+  --embed-play-size: 26px;
+  --embed-dock-height: 36px;
+  --hud-gap: 6px;
+  --tower-space: calc(var(--embed-order-width) + 2 * var(--hud-gap));
+  position: relative;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.embed-header { z-index: 3; flex: 0 0 42px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; padding: 3px 6px; border-bottom: 1px solid var(--hud-line); background: var(--hud-surface-solid); }
+.embed-header-identity { grid-column: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.embed-header-progress { grid-column: 3; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.embed-brand { flex: none; display: grid; place-items: center; width: 30px; height: 32px; }
+.embed-brand img { width: 26px; height: 26px; border-radius: 4px; }
+.embed-race-title { flex: 1; min-width: 0; line-height: 1.1; }
+.embed-race-title h1 { margin: 0; overflow: hidden; font-size: 13px; font-weight: 750; line-height: 1.05; letter-spacing: .2px; text-overflow: ellipsis; white-space: nowrap; }
+.embed-race-title h1 span { color: var(--hud-dim); font-size: 11px; font-weight: 700; }
+.embed-race-title p { margin: 1px 0 0; overflow: hidden; color: var(--hud-dim); font-size: 9px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.embed-status { grid-column: 2; grid-row: 1; display: flex; align-items: center; justify-content: center; gap: 5px; max-width: 112px; overflow: hidden; color: var(--hud-dim); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.embed-status i { flex: none; width: 6px; height: 6px; border-radius: 1px; background: var(--tone); }
+.embed-status.tone-chequered i { background: var(--chequered); }
+.embed-lap { flex: none; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.embed-lap small, .embed-lap > span { color: var(--hud-dim); font-size: 10px; }
+.embed-open { flex: none; display: grid; place-items: center; width: 30px; height: 32px; color: var(--hud-dim); border-radius: 3px; }
+.embed-open:hover { background: var(--hud-hover); color: var(--hud-text); }
+.embed-open svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.embed-header a:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+
+.embed-shell .race-view { display: block; flex: 1 1 0; min-height: 0; }
+.embed-shell .race-stage { position: absolute; inset: 0; min-height: 0; }
+.embed-order { position: absolute; inset: var(--hud-gap) auto calc(var(--embed-dock-height) + var(--hud-gap)) var(--hud-gap); z-index: 3; width: var(--embed-order-width); display: flex; overflow: hidden; border: 1px solid var(--hud-line-strong); border-radius: var(--hud-radius); }
+.embed-order, .embed-shell .replay-dock { background: #060c13c9; backdrop-filter: blur(12px) saturate(145%); box-shadow: inset 0 1px 0 #ffffff14, 0 6px 20px #0005; }
+.embed-order .running-order { position: static; width: 100%; border: 0; transform: none; visibility: visible; transition: none; background: transparent; }
+.embed-order .order-heading { position: static; display: block; width: auto; height: auto; padding: 4px; clip-path: none; border-bottom: 1px solid var(--hud-line); }
+.embed-order .order-title { font-size: 8px; letter-spacing: .3px; text-align: center; }
+.embed-order .order-close, .embed-order .order-name, .embed-order .order-number, .embed-order .stopped-icon { display: none; }
+.embed-order .order-list { padding-bottom: 4px; scrollbar-width: thin; mask-image: linear-gradient(#000 calc(100% - 6px), transparent); }
+.embed-order .order-row { grid-template-columns: 16px 2px minmax(0, 1fr); gap: 4px; min-height: 18px; padding: 2px 4px; line-height: 12px; }
+.embed-order .order-position { color: var(--hud-dim); font-size: 10px; }
+.embed-order .order-team { height: 10px; }
+.embed-order .order-code { font-size: 10px; letter-spacing: .3px; }
+.embed-order .order-row.is-selected .order-position { color: var(--hud-text); }
+.embed-order .order-row:focus-visible { outline-offset: -2px; }
+.embed-order .order-message { padding: 12px 4px; font-size: 10px; text-align: center; }
+.embed-order .order-footer { display: none; }
+
+.embed-shell .scene-rail { display: flex; gap: 4px; right: 6px; bottom: calc(var(--embed-dock-height) + 6px); }
+.embed-shell .rail-group { display: flex; gap: 0; padding: 1px; border-radius: 4px; }
+.embed-shell .rail-group button { width: 24px; height: 22px; }
+.embed-shell .scene-rail svg { width: 13px; height: 13px; }
+.embed-shell .stage-cta { left: calc(50% + var(--tower-space) / 2); }
+.embed-shell .cta-button { gap: 8px; padding: 12px 16px; font-size: 11px; letter-spacing: .4px; }
+.embed-shell .race-start-countdown { gap: 8px; padding: 10px; }
+.embed-shell .start-lights { gap: 6px; padding: 8px; }
+.embed-shell .start-lights i { width: 22px; height: 22px; }
+.embed-shell .notification-stack { width: min(230px, calc(100% - var(--tower-space) - 12px)); }
+.embed-shell .race-toast { padding: 7px 9px; }
+.embed-shell .race-toast strong { font-size: 10px; }
+.embed-shell .race-toast > span { font-size: 9px; }
+.embed-shell .driver-focus { left: calc(var(--tower-space) + var(--hud-gap)); right: 6px; bottom: calc(var(--embed-dock-height) + 40px); width: auto; gap: 5px 8px; padding: 6px; }
+.embed-shell .focus-position { font-size: 20px; }
+.embed-shell .focus-identity strong { font-size: 11px; }
+.embed-shell .focus-identity span, .embed-shell .focus-note { font-size: 9px; }
+.embed-shell .focus-locate { min-height: 28px; font-size: 10px; }
+.embed-shell .focus-close { width: 28px; height: 28px; }
+.embed-shell .race-loader { padding: 16px; }
+.embed-shell .loader-wheel { width: 48px; height: 48px; border-width: 8px; margin-bottom: 16px; }
+.embed-shell .loader-wheel span { inset: 10px; }
+.embed-shell .loader-eyebrow { font-size: 8px; letter-spacing: 1px; }
+.embed-shell .race-loader h2 { margin: 8px 0 16px; font-size: 17px; }
+.embed-shell .loader-steps { gap: 6px; font-size: 10px; }
+.embed-shell .scene-error { padding: 16px; font-size: 12px; }
+.embed-shell .unavailable-panel { left: calc(50% + var(--tower-space) / 2); width: calc(100% - var(--tower-space) - 12px); padding: 16px; }
+.embed-shell .unavailable-panel h2 { font-size: 16px; }
+.embed-shell .unavailable-panel p, .embed-shell .unavailable-panel button { font-size: 11px; }
+.embed-finish { display: grid; justify-items: center; gap: 12px; padding: 20px; border: 1px solid var(--hud-line); border-radius: 6px; background: var(--hud-surface-solid); white-space: nowrap; }
+.embed-finish > span { color: var(--hud-dim); font-size: 11px; }
+.embed-finish a { color: var(--hud-dim); font-size: 10px; }
+.embed-finish-close { position: absolute; top: 0; right: 0; width: 28px; height: 28px; border: 0; background: transparent; }
+
+.embed-shell .replay-dock { position: absolute; inset: auto 0 0; height: var(--embed-dock-height); display: flex; gap: 6px; padding: 3px 8px; }
+.embed-shell .dock-transport { gap: 0; }
+.embed-shell .dock-play { width: var(--embed-play-size); height: var(--embed-play-size); min-width: var(--embed-play-size); min-height: var(--embed-play-size); border-radius: 3px; background: transparent; }
+.embed-shell .dock-play:hover:not(:disabled) { background: transparent; }
+.embed-shell .dock-play .play-icon { width: 22px; height: 22px; margin: 0; border: 0; background: #fff; mask: url('/icons/circle-play.svg') center / contain no-repeat; }
+.embed-shell .dock-play .pause-icon { border-inline-color: #fff; }
+.embed-shell .dock-skip, .embed-shell .dock-time.is-total { display: none; }
+.embed-shell .dock-time { min-width: 49px; font-size: 10px; }
+.embed-shell .timeline { height: 24px; }
+.embed-shell .dock-speed { min-width: 52px; min-height: 26px; padding: 2px 16px 2px 6px; font-size: 10px; }
+
+@media (pointer: coarse) {
+  .embed-shell { --embed-play-size: 28px; }
+  .embed-order .order-row { min-height: 22px; }
+  .embed-shell .rail-group button { width: 28px; height: 26px; }
+  .embed-shell .driver-focus { bottom: calc(var(--embed-dock-height) + 44px); }
+  .embed-shell .dock-speed { min-height: 28px; }
+}

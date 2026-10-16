@@ -22,9 +22,27 @@
 /* Timing tower: circuit, conditions, lap and running order in one column. */
 .timing-tower { position: absolute; z-index: 3; top: var(--hud-gap); bottom: var(--hud-gap); left: var(--hud-gap); width: var(--tower-width); display: flex; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid var(--hud-line); border-radius: var(--hud-radius); background: var(--hud-surface); backdrop-filter: var(--hud-blur); box-shadow: var(--hud-shadow); }
 .race-title { container-type: inline-size; padding: 14px 16px 12px; }
+.race-title-heading { display: flex; align-items: center; gap: 8px; }
 /* Sized from the name's length so the longest circuit still fits on one line; 0.8em covers a wide fallback font. */
-.race-title h1 { margin: 0; overflow: hidden; font-family: var(--display-font); font-size: clamp(15px, calc(100cqi / (var(--name-length) * .8)), 40px); font-weight: 300; line-height: 1.1; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-.race-title p { margin: 4px 0 0; overflow: hidden; color: var(--hud-dim); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.race-title h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; font-family: var(--display-font); font-size: clamp(15px, calc((100cqi - 44px) / (var(--name-length) * .8)), 40px); font-weight: 300; line-height: 1.1; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.race-title > p { margin: 4px 0 0; overflow: hidden; color: var(--hud-dim); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.race-share-button { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--hud-line); border-radius: 4px; background: transparent; }
+.race-share-button:hover { background: var(--hud-hover); }
+.race-share-dialog { width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow: auto; border: 1px solid var(--hud-line-strong); border-radius: var(--hud-radius); background: var(--hud-surface-solid); color: var(--hud-text); box-shadow: var(--hud-shadow); }
+.race-share-dialog::backdrop { background: #04080cbf; }
+.race-share-content { display: grid; gap: 20px; padding: 24px; }
+.race-share-heading { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.race-share-heading h2 { margin: 0; font-size: 22px; }
+.race-share-heading p { margin: 6px 0 0; color: var(--hud-dim); font-size: 13px; }
+.race-share-close { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 4px; background: transparent; font-size: 24px; }
+.race-share-close:hover { background: var(--hud-hover); }
+.race-share-option { display: grid; gap: 8px; }
+.race-share-option label { font-size: 13px; font-weight: 700; }
+.race-share-option p { margin: 0; color: var(--hud-dim); font-size: 12px; line-height: 1.5; }
+.race-share-option input { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--hud-line); border-radius: 4px; background: var(--hud-ink); color: var(--hud-dim); font-size: 12px; }
+.race-share-option button { min-height: 40px; border: 1px solid var(--hud-line-strong); border-radius: 4px; background: var(--hud-hover); font-size: 13px; font-weight: 700; }
+.race-share-option button:hover { background: #ffffff24; }
+.race-share-message { min-height: 18px; margin: 0; font-size: 12px; line-height: 1.5; }
 
 .race-conditions { display: grid; border-block: 1px solid var(--hud-line); }
 .condition-status { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 3px 10px; padding: 11px 16px 11px 12px; border-left: 4px solid var(--tone); background: linear-gradient(90deg, color-mix(in srgb, var(--tone) 28%, transparent), color-mix(in srgb, var(--tone) 8%, transparent)); }

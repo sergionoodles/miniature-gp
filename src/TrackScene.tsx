@@ -40,12 +40,13 @@ type Props = {
   onPhoto: (capture: SceneCapture) => void
   showCars?: boolean
   isOrbiting?: boolean
+  isEmbed?: boolean
   isSoundOn: boolean
   onToggleSound: () => void
   ref?: Ref<SceneHandle>
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isSoundOn, onToggleSound, ref }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isEmbed = false, isSoundOn, onToggleSound, ref }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid, isOrbiting })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
@@ -139,7 +140,11 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     const resize = () => {
       const { width: viewportWidth, height: viewportHeight } = container.getBoundingClientRect()
       if (!viewportWidth || !viewportHeight) return
-      const sidebar = window.innerWidth > COMPACT_LAYOUT_WIDTH ? 286 : 0
+      const fullPageSidebar = window.innerWidth > COMPACT_LAYOUT_WIDTH ? 286 : 0
+      const style = getComputedStyle(container)
+      const sidebar = isEmbed
+        ? Number.parseFloat(style.getPropertyValue('--embed-order-width')) + 2 * Number.parseFloat(style.getPropertyValue('--hud-gap'))
+        : fullPageSidebar
       frameCircuitCameraInPlace(camera, viewportWidth, viewportHeight, width, depth, sidebar)
       pipeline.setSize(viewportWidth, viewportHeight)
     }
@@ -286,7 +291,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       cameraPoseRef.current = () => null
       snapshotRef.current = () => null
     }
-  }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, onSceneReady, quality])
+  }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, onSceneReady, quality, isEmbed])
 
   const toggleQuality = () => {
     const next = quality === 'high' ? 'standard' : 'high'
@@ -311,28 +316,28 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     <div className="track-canvas" ref={containerRef} />
     {handoff && <SceneHandoff image={handoff.image} isFading={handoff.isFading} onFaded={() => setHandoff(null)} />}
     {error && <div className="scene-error" role="alert">{error}</div>}
-    <div className="scene-rail" role="toolbar" aria-label="Camera and view" aria-orientation="vertical">
+    <div className="scene-rail" role="toolbar" aria-label="Camera and view" aria-orientation={isEmbed ? 'horizontal' : 'vertical'}>
       <div className="rail-group camera-group">
-        <button type="button" aria-label="Top view" aria-pressed={view === 'top'} title="Top view" onClick={() => changeView(view === 'top' ? 'overview' : 'top')}>
+        {!isEmbed && <button type="button" aria-label="Top view" aria-pressed={view === 'top'} title="Top view" onClick={() => changeView(view === 'top' ? 'overview' : 'top')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 12h16M12 4v16" /></svg>
-        </button>
-        <button className="rail-detail" type="button" aria-label="Rotate left" title="Rotate left" onClick={() => actionRef.current('left')}>
+        </button>}
+        <button className={isEmbed ? undefined : 'rail-detail'} type="button" aria-label="Rotate left" title="Rotate left" onClick={() => actionRef.current('left')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
         </button>
-        <button className="rail-detail" type="button" aria-label="Rotate right" title="Rotate right" onClick={() => actionRef.current('right')}>
+        <button className={isEmbed ? undefined : 'rail-detail'} type="button" aria-label="Rotate right" title="Rotate right" onClick={() => actionRef.current('right')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
         </button>
-        <button className="rail-detail" type="button" aria-label="Zoom in" title="Zoom in" onClick={() => actionRef.current('in')}>
+        <button className={isEmbed ? undefined : 'rail-detail'} type="button" aria-label="Zoom in" title="Zoom in" onClick={() => actionRef.current('in')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         </button>
-        <button className="rail-detail" type="button" aria-label="Zoom out" title="Zoom out" onClick={() => actionRef.current('out')}>
+        <button className={isEmbed ? undefined : 'rail-detail'} type="button" aria-label="Zoom out" title="Zoom out" onClick={() => actionRef.current('out')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
         </button>
-        <button type="button" aria-label="Reset camera" title="Reset camera" onClick={() => changeView(view)}>
+        {!isEmbed && <button type="button" aria-label="Reset camera" title="Reset camera" onClick={() => changeView(view)}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9V5a2 2 0 0 1 2-2h4M15 3h4a2 2 0 0 1 2 2v4M21 15v4a2 2 0 0 1-2 2h-4M9 21H5a2 2 0 0 1-2-2v-4" /><circle cx="12" cy="12" r="2.5" /></svg>
-        </button>
+        </button>}
       </div>
-      <div className="rail-group">
+      {!isEmbed && <div className="rail-group">
         <button type="button" aria-label="Take a photo" disabled={error !== null} title="Take a photo of the race as framed" onClick={takePhoto}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3.2L9 5h6l1.8 2.5H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.6" /></svg>
         </button>
@@ -345,7 +350,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
             {isSoundOn ? <><path d="M16 9a5 5 0 0 1 0 6" /><path d="M19.364 18.364a9 9 0 0 0 0-12.728" /></> : <path d="m22 9-6 6m0-6 6 6" />}
           </svg>
         </button>
-      </div>
+      </div>}
     </div>
   </>
 }
