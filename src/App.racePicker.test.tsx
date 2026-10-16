@@ -1,6 +1,9 @@
-import { Children, isValidElement, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { Children, isValidElement, type ComponentType, type ReactNode, type SelectHTMLAttributes } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import App from './App'
+import { TrackScene } from './TrackScene'
+import { ReplayDock } from './ReplayDock'
+import { START_LIGHT_COUNT } from './RaceStartLights'
 
 const hooks = vi.hoisted(() => ({
   values: [] as unknown[],
@@ -48,6 +51,13 @@ function textContent(node: ReactNode): string {
   if (Array.isArray(node)) return node.map(textContent).join(' ')
   if (isValidElement<{ children?: ReactNode }>(node)) return textContent(node.props.children)
   return typeof node === 'string' ? node : ''
+}
+
+function findComponent<Props>(node: ReactNode, component: ComponentType<Props>): Props | undefined {
+  if (Array.isArray(node)) return node.map((child) => findComponent(child, component)).find(Boolean)
+  if (!isValidElement<{ children?: ReactNode }>(node)) return undefined
+  if (node.type === component) return node.props as Props
+  return findComponent(node.props.children, component)
 }
 
 function stubBrowser() {
@@ -264,6 +274,55 @@ it('loads the exact embedded race and preserves its embed URL', async () => {
   expect(window.history.replaceState).toHaveBeenLastCalledWith(null, '', '/embed/2025/monza/')
   expect(findSelect(tree, 'Season')).toBeUndefined()
   expect(findSelect(tree, 'Grand Prix')).toBeUndefined()
+})
+
+it.each([true, false])('automatically starts only embeds after the scene and loader are ready (embed: %s)', async (isEmbed) => {
+  stubBrowser()
+  window.location.pathname = `${isEmbed ? '/embed' : ''}/2025/monza/`
+  const requestedRace = race(2025, 'requested', 'Monza')
+  vi.stubGlobal('fetch', async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2025])
+    if (url === '/data/2025/races-2025.json') return Response.json([requestedRace])
+    return Response.json(replay)
+  })
+  const timers = new Map<number, () => void>()
+  let nextTimerId = 0
+  vi.spyOn(window, 'setTimeout').mockImplementation((callback: TimerHandler) => {
+    if (typeof callback !== 'function') throw new Error('Expected a timer callback')
+    const timerId = ++nextTimerId
+    timers.set(timerId, () => callback())
+    return timerId
+  })
+  vi.spyOn(window, 'clearTimeout').mockImplementation((timerId) => { timers.delete(Number(timerId)) })
+  const advanceTimers = async () => {
+    const callbacks = [...timers.values()]
+    timers.clear()
+    callbacks.forEach((callback) => callback())
+    return renderApp()
+  }
+
+  const loadedTree = await renderApp()
+  expect(findComponent(loadedTree, ReplayDock)).toMatchObject({ isPlaying: false, isCountingDown: false })
+  findComponent(loadedTree, TrackScene)?.onSceneReady?.(true)
+  const sceneTree = await renderApp()
+  expect(findComponent(sceneTree, ReplayDock)).toMatchObject({ isPlaying: false, isCountingDown: false })
+
+  await advanceTimers()
+  await advanceTimers()
+  const readyTree = await advanceTimers()
+  expect(findComponent(readyTree, ReplayDock)).toMatchObject({ isPlaying: false, isCountingDown: isEmbed })
+
+  for (let light = 0; light < START_LIGHT_COUNT; light += 1) await advanceTimers()
+  const playingTree = await renderApp()
+  expect(findComponent(playingTree, ReplayDock)).toMatchObject({ isPlaying: isEmbed, isCountingDown: false })
+
+  if (!isEmbed) return
+  findComponent(playingTree, ReplayDock)?.onTogglePlayback()
+  findComponent(playingTree, TrackScene)?.onSceneReady?.(false)
+  await renderApp()
+  findComponent(playingTree, TrackScene)?.onSceneReady?.(true)
+  const pausedTree = await renderApp()
+  expect(findComponent(pausedTree, ReplayDock)).toMatchObject({ isPlaying: false, isCountingDown: false })
 })
 
 it('shows an error for an unknown embedded race without substituting another race', async () => {

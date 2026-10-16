@@ -79,6 +79,7 @@ export default function App() {
   const timeRef = useRef(0)
   const previousNotificationTimeRef = useRef(0)
   const isPlayingRef = useRef(false)
+  const hasHandledEmbedStartRef = useRef(false)
   const speedRef = useRef(DEFAULT_SPEED)
   const sceneRef = useRef<SceneHandle>(null)
   const { audio, isSoundOn, toggleSound } = useRaceAudio({ initialSoundEnabled: isEmbed ? true : undefined })
@@ -89,6 +90,7 @@ export default function App() {
 
   const selectRace = (nextRaceId: string, options = races, updateHistory = true, nextYear = year) => {
     isPlayingRef.current = false
+    hasHandledEmbedStartRef.current = false
     timeRef.current = 0
     previousNotificationTimeRef.current = 0
     setIsPlaying(false)
@@ -519,6 +521,12 @@ export default function App() {
     advanceLoader()
     return () => window.clearTimeout(timeout)
   }, [race.id, loaderRun])
+
+  useEffect(() => {
+    if (!isEmbed || !replay || unavailable || !sceneReady || !hasShownLoaderSteps || hasHandledEmbedStartRef.current) return
+    hasHandledEmbedStartRef.current = true
+    if (!hasStarted && countdown === null) setCountdown(START_LIGHT_COUNT)
+  }, [isEmbed, replay, unavailable, sceneReady, hasShownLoaderSteps, hasStarted, countdown])
 
   const runningOrder = <RunningOrder title={isEmbed ? 'Order' : orderTitle} drivers={order} selectedDriver={selectedDriver} stoppedDrivers={stoppedDrivers} isOpen={!isEmbed && isOrderOpen} onHover={setHoveredDriver} onSelect={selectFromOrder} onClose={() => setIsOrderOpen(false)}>
     {!replay && <p className="order-message">{isEmbed ? '—' : error ?? 'Loading race data…'}</p>}
