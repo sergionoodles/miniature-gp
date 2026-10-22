@@ -20,18 +20,19 @@ export function buildWireframeCircuit(replay: Replay, circuit: string, weatherAt
   const overlay = new THREE.Scene()
   scene.background = new THREE.Color(WIREFRAME_BACKGROUND)
   addCircuitWorld(scene, overlay, replay, layout, false, 'terminal')
-  restyleAsWireframe(scene, Math.max(width, depth) / 2)
+  const { updateWater } = restyleAsWireframe(scene, Math.max(width, depth) / 2)
   const rain = createRain(plan.field.width, plan.field.depth)
   rain.streaks.material.color.set(RAIN_COLOR)
   scene.add(rain.streaks)
   const { builds, cars, updateCarLivery } = addCars(scene, replay, createWireframeCarKit().createCar)
+  const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let currentWeather = weatherAt(0)
   const updateAtmosphere = (elapsed: number, _isIsolated: boolean, deltaSeconds: number) => {
     currentWeather = weatherAt(elapsed)
     rain.update(currentWeather.rain, deltaSeconds)
+    if (!isReducedMotion) updateWater(deltaSeconds)
     return { bloom: BLOOM }
   }
-  const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let effectsClock = 0
   // Runs after the cars are placed for the frame, so each trail ends right behind its car.
   const updateCarEffects = (deltaSeconds: number) => {

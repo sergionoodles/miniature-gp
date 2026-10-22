@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { addShaderPatch } from './shaderPatches'
+import { createWireframeWater } from './wireframeWater'
 
 // The wireframe look redraws the realistic world in greys: every solid becomes a dark fill with
 // a pale outline, the ground a faint grid and the track a bright white outline, leaving the cars
@@ -28,7 +29,6 @@ const GRID_FUNCTIONS = /* glsl */ `
 uniform vec3 gridMinor;
 uniform vec3 gridMajor;
 uniform vec3 gridContour;
-uniform vec2 gridAxes;
 uniform vec2 gridFade;
 uniform float gridCell;
 uniform float gridMajorEvery;
@@ -38,7 +38,7 @@ varying vec3 vGridPosition;
 float gridLine( vec2 coord ) {
   vec2 distance = abs( fract( coord - 0.5 ) - 0.5 ) / max( fwidth( coord ), vec2( 1e-4 ) );
   vec2 line = 1.0 - min( distance, 1.0 );
-  return max( line.x * gridAxes.x, line.y * gridAxes.y );
+  return max( line.x, line.y );
 }
 float contourLine( float value ) {
   float distance = abs( fract( value ) - 0.5 ) / max( fwidth( value ), 1e-4 );
@@ -46,7 +46,7 @@ float contourLine( float value ) {
 }
 `
 
-type GridLook = { fill: number; minor: THREE.Color; major: THREE.Color; contour: THREE.Color; axes: [number, number]; cell: number; majorEvery: number; fadeRadius: number }
+type GridLook = { fill: number; minor: THREE.Color; major: THREE.Color; contour: THREE.Color; cell: number; majorEvery: number; fadeRadius: number }
 
 const CONTOUR_STEP = 1.6
 // Contours start above the circuit's flat ground, so they trace hills and mountains only.
@@ -55,11 +55,11 @@ const FADE_REACH = 2.4
 
 // A dark surface carrying a world-space grid and height contours that fade out with distance, so
 // the world dissolves into the void instead of ending at the terrain's edge.
-function createGridMaterial({ fill, minor, major, contour, axes, cell, majorEvery, fadeRadius }: GridLook) {
+function createGridMaterial({ fill, minor, major, contour, cell, majorEvery, fadeRadius }: GridLook) {
   const material = new THREE.MeshBasicMaterial({ color: fill })
   const uniforms = {
     gridMinor: { value: minor }, gridMajor: { value: major }, gridContour: { value: contour },
-    gridAxes: { value: new THREE.Vector2(...axes) }, gridFade: { value: new THREE.Vector2(fadeRadius, fadeRadius * FADE_REACH) },
+    gridFade: { value: new THREE.Vector2(fadeRadius, fadeRadius * FADE_REACH) },
     gridCell: { value: cell }, gridMajorEvery: { value: majorEvery }, contourStep: { value: CONTOUR_STEP },
   }
   addShaderPatch(material, 'wireframe-grid-v1', (shader) => {
@@ -166,12 +166,13 @@ function disposeReplaced(replaced: Set<THREE.Material>, kept: Set<THREE.Texture>
   textures.forEach((texture) => texture.dispose())
 }
 
-// `extent` is the circuit's radius; the ground grid fades out beyond it.
+// `extent` is the circuit's radius; the ground grid and the water lines fade out beyond it.
+// Returns an update that animates the water.
 export function restyleAsWireframe(scene: THREE.Scene, extent: number) {
   const meshes: THREE.Mesh[] = []
   scene.traverse((object) => { if (object instanceof THREE.Mesh) meshes.push(object) })
-  const ground = createGridMaterial({ fill: WIREFRAME_BACKGROUND, minor: grey(0.035), major: grey(0.09), contour: grey(0.16), axes: [1, 1], cell: 4, majorEvery: 5, fadeRadius: extent })
-  const water = createGridMaterial({ fill: 0x05070a, minor: grey(0.05), major: grey(0.1), contour: grey(0), axes: [0, 1], cell: 1.2, majorEvery: 6, fadeRadius: extent })
+  const ground = createGridMaterial({ fill: WIREFRAME_BACKGROUND, minor: grey(0.035), major: grey(0.09), contour: grey(0.16), cell: 4, majorEvery: 5, fadeRadius: extent })
+  const water = createWireframeWater(extent, extent * FADE_REACH)
   const fill = createFillMaterial(FILL)
   const roadFill = createFillMaterial(ROAD_FILL)
   const roadEdge = new THREE.LineBasicMaterial({ color: grey(ROAD_EDGE_GREY) })
@@ -198,7 +199,7 @@ export function restyleAsWireframe(scene: THREE.Scene, extent: number) {
       continue
     }
     if (role === 'ground' || role === 'water') {
-      mesh.material = role === 'ground' ? ground : water
+      mesh.material = role === 'ground' ? ground : water.material
       continue
     }
     if (role === 'kerb') {
@@ -222,4 +223,5 @@ export function restyleAsWireframe(scene: THREE.Scene, extent: number) {
     outline(mesh, lineFor(color))
   }
   disposeReplaced(replaced, kept)
+  return { updateWater: water.update }
 }
