@@ -2,14 +2,14 @@ import * as THREE from 'three'
 import { resolveCircuitEnvironment, type CircuitEnvironment } from './circuitEnvironments'
 import { createLandmark } from './circuitLandmarks'
 import { createRaceLighting, getRaceDaylight, getRaceLocalHour } from './raceLighting'
-import type { WeatherTimeline } from './raceWeather'
+import type { WeatherState, WeatherTimeline } from './raceWeather'
 import { createRain, createRainSplashes } from './rainEffect'
-import { lappedDriversAt, type Replay } from './replay'
+import { lappedDriversAt, type Driver, type Replay } from './replay'
 import { CIRCUIT_MARGIN, createProjection, createUnprojection } from './circuitGeometry'
 import { createCarKit } from './carModel'
 import type { GraphicsQuality } from './graphicsQuality'
 import { createCarSpray } from './carSpray'
-import { createGrandstand, createPaddock } from './sceneAssets'
+import { createGrandstand, createPaddock, type LabelStyle } from './sceneAssets'
 import { addBuildings, addGroves, addTrees, addWater, addYachts } from './sceneryMeshes'
 import { planScenery, type LandmarkPlacement, type StandFootprint } from './sceneryPlan'
 import { createGroundTexture } from './proceduralTextures'
@@ -85,11 +85,13 @@ function addTerrain(scene: THREE.Scene, field: TerrainField, environment: Circui
   const groundParameters = { vertexColors: true, map: texture }
   const ground = new THREE.Mesh(geometry, isDetailed ? new THREE.MeshStandardMaterial({ ...groundParameters, roughness: 1 }) : new THREE.MeshLambertMaterial(groundParameters))
   ground.receiveShadow = true
+  ground.userData.wireframeRole = 'ground'
   scene.add(ground)
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: environment.ground.floor, roughness: 1 }))
   floor.rotation.x = -Math.PI / 2
   floor.position.y = -0.3
   floor.receiveShadow = true
+  floor.userData.wireframeRole = 'ground'
   scene.add(floor)
 }
 
@@ -123,10 +125,9 @@ function addScenery(scene: THREE.Scene, plan: ReturnType<typeof planScenery>, en
   return [...landmarkLights, ...windowLights]
 }
 
-// Standard quality builds a lighter scene: simpler foliage and crowds, cheaper shading, no
-// cloud shadows, thinner rain and none of the per-frame water, splash or spray effects.
-export function buildCircuit(replay: Replay, circuit: string, weatherAt: WeatherTimeline, quality: GraphicsQuality = 'high') {
-  const isDetailed = quality === 'high'
+// Everything every graphics style shares: the sampled track, pit lane, scenery plan, bridges and
+// the telemetry with pitting cars moved onto the pit lane.
+export function layoutCircuit(replay: Replay, circuit: string) {
   const project = createProjection(replay.track)
   const rawTrack = replay.track.map(([x, y]) => project(x, y))
   const track = new THREE.CatmullRomCurve3(rawTrack, true, 'centripetal').getSpacedPoints(TRACK_SAMPLES).slice(0, -1)
@@ -139,18 +140,56 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
   const pitLane = findPitLane(track, pitPasses(replay, project))
   const locations = pitLane ? moveCarsOntoPitLane(replay, pitLane, track, project, createUnprojection(replay.track)) : replay.locations
   const plan = planScenery(track, environment, width, depth, width + TERRAIN_MARGIN, depth + TERRAIN_MARGIN, pitLane)
-  const scene = new THREE.Scene()
-  const overlay = new THREE.Scene()
-  const updateRaceLighting = createRaceLighting(scene, Math.max(width, depth) / 2 + SHADOW_MARGIN)
-  addTerrain(scene, plan.field, environment, isDetailed)
-  const updateWater = addWater(scene, plan.field, environment, isDetailed)
   const crossings = findTrackCrossings(track)
   const elevations = trackElevations(track, crossings)
-  const { asphalt, lines, verge, litSurfaces, fixtures } = addTrackside(scene, overlay, track, elevations, { vergeColor: environment.ground.verge, isFloodlit: Boolean(environment.isFloodlit), driverCount: replay.drivers.length, seed: environment.id, pitLane: pitLane?.path ?? [] })
+  return { project, track, width, depth, environment, pitLane, locations, plan, crossings, elevations }
+}
+
+export type CircuitLayout = ReturnType<typeof layoutCircuit>
+
+// The static world: terrain, water, the track and its surroundings, pit lane, bridges and scenery.
+export function addCircuitWorld(scene: THREE.Scene, overlay: THREE.Scene, replay: Replay, layout: CircuitLayout, isDetailed: boolean, labelStyle: LabelStyle = 'rounded') {
+  const { track, environment, pitLane, plan, crossings, elevations } = layout
+  addTerrain(scene, plan.field, environment, isDetailed)
+  const updateWater = addWater(scene, plan.field, environment, isDetailed)
+  const { asphalt, lines, verge, litSurfaces, fixtures } = addTrackside(scene, overlay, track, elevations, { vergeColor: environment.ground.verge, isFloodlit: Boolean(environment.isFloodlit), driverCount: replay.drivers.length, seed: environment.id, pitLane: pitLane?.path ?? [], labelStyle })
   if (pitLane) addPitLane(scene, pitLane, track, { asphalt, lines, verge })
   addBridges(scene, track, elevations, crossings)
   const teamColors = [...new Set(replay.drivers.map(({ color }) => color))]
   const nightMaterials = addScenery(scene, plan, environment, teamColors, isDetailed)
+  return { asphalt, litSurfaces, fixtures, nightMaterials, updateWater }
+}
+
+type CarBuild = { group: THREE.Group; setLapped: (isLapped: boolean) => void }
+
+export function addCars<Car extends CarBuild>(scene: THREE.Scene, replay: Replay, createCar: (driver: Driver) => Car) {
+  const builds = new Map(replay.drivers.map((driver) => [driver.number, createCar(driver)] as const))
+  builds.forEach(({ group }) => scene.add(group))
+  const cars = new Map([...builds].map(([number, { group }]) => [number, group] as const))
+  const updateCarLivery = (time: number) => {
+    const lapped = lappedDriversAt(replay.laps, time)
+    builds.forEach(({ setLapped }, driver) => setLapped(lapped.has(driver)))
+  }
+  return { builds, cars, updateCarLivery }
+}
+
+// Rain lights come on once the track is wet and flash in heavy rain, unless motion is reduced.
+export function isRainLightOn(weather: WeatherState, effectsSeconds: number, isReducedMotion: boolean) {
+  const isWet = weather.wetness > RAIN_LIGHT_WETNESS || weather.rain > RAIN_LIGHT_WETNESS
+  const isFlashing = weather.rain > RAIN_LIGHT_FLASH && !isReducedMotion
+  return isWet && (!isFlashing || Math.sin(effectsSeconds * RAIN_LIGHT_FLASH_SPEED) > 0)
+}
+
+// Standard quality builds a lighter scene: simpler foliage and crowds, cheaper shading, no
+// cloud shadows, thinner rain and none of the per-frame water, splash or spray effects.
+export function buildCircuit(replay: Replay, circuit: string, weatherAt: WeatherTimeline, quality: GraphicsQuality = 'high') {
+  const isDetailed = quality === 'high'
+  const layout = layoutCircuit(replay, circuit)
+  const { project, track, width, depth, plan, elevations, locations } = layout
+  const scene = new THREE.Scene()
+  const overlay = new THREE.Scene()
+  const updateRaceLighting = createRaceLighting(scene, Math.max(width, depth) / 2 + SHADOW_MARGIN)
+  const { asphalt, litSurfaces, fixtures, nightMaterials, updateWater } = addCircuitWorld(scene, overlay, replay, layout, isDetailed)
   const carPaints: THREE.MeshStandardMaterial[] = []
   const rain = createRain(plan.field.width, plan.field.depth, isDetailed ? 1 : STANDARD_RAIN_DENSITY)
   const splashes = createRainSplashes(track)
@@ -176,20 +215,9 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
     return { bloom: THREE.MathUtils.lerp(DAY_BLOOM, NIGHT_BLOOM, glow) }
   }
   const carKit = createCarKit(isDetailed)
-  const rainLights: THREE.Mesh[] = []
-  const setCarLapped = new Map<number, (isLapped: boolean) => void>()
-  const cars = new Map(replay.drivers.map((driver) => {
-    const { group: car, paint, rainLight, setLapped } = carKit.createCar(driver)
-    carPaints.push(paint)
-    rainLights.push(rainLight)
-    setCarLapped.set(driver.number, setLapped)
-    scene.add(car)
-    return [driver.number, car] as const
-  }))
-  const updateCarLivery = (time: number) => {
-    const lapped = lappedDriversAt(replay.laps, time)
-    setCarLapped.forEach((setLapped, driver) => setLapped(lapped.has(driver)))
-  }
+  const { builds, cars, updateCarLivery } = addCars(scene, replay, carKit.createCar)
+  builds.forEach(({ paint }) => carPaints.push(paint))
+  const rainLights = [...builds.values()].map(({ rainLight }) => rainLight)
   const spray = createCarSpray(cars.size)
   scene.add(spray.points)
   if (isDetailed) cloudShadows.applyTo(sceneMaterials(scene))
@@ -199,11 +227,11 @@ export function buildCircuit(replay: Replay, circuit: string, weatherAt: Weather
   // Runs after the cars are placed for the frame, so spray leaves from where each car now is.
   const updateCarEffects = (deltaSeconds: number) => {
     effectsClock += deltaSeconds
-    const isWet = currentWeather.wetness > RAIN_LIGHT_WETNESS || currentWeather.rain > RAIN_LIGHT_WETNESS
-    const isFlashing = currentWeather.rain > RAIN_LIGHT_FLASH && !isReducedMotion
-    const isLit = isWet && (!isFlashing || Math.sin(effectsClock * RAIN_LIGHT_FLASH_SPEED) > 0)
+    const isLit = isRainLightOn(currentWeather, effectsClock, isReducedMotion)
     rainLights.forEach((light) => { light.visible = isLit })
     spray.update([...cars.values()], isDetailed ? currentWeather.wetness : 0, deltaSeconds)
   }
   return { scene, overlay, cars, locations, updateCarEffects, updateCarLivery, project, track, trackHeightAt: createTrackHeightLookup(track, elevations), updateAtmosphere }
 }
+
+export type CircuitScene = ReturnType<typeof buildCircuit>

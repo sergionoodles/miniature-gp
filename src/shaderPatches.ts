@@ -17,7 +17,7 @@ export function addShaderPatch(material: THREE.Material, key: string, patch: Sha
 export function sceneMaterials(scene: THREE.Object3D) {
   const materials = new Set<THREE.Material>()
   scene.traverse((object) => {
-    if (!(object instanceof THREE.Mesh || object instanceof THREE.Sprite)) return
+    if (!(object instanceof THREE.Mesh || object instanceof THREE.Sprite || object instanceof THREE.Line)) return
     const values = Array.isArray(object.material) ? object.material : [object.material]
     values.forEach((material: THREE.Material) => materials.add(material))
   })

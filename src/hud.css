@@ -103,7 +103,7 @@
 .rail-group { display: grid; gap: 2px; padding: 4px; border: 1px solid var(--hud-line); border-radius: var(--hud-radius); background: var(--hud-surface); backdrop-filter: var(--hud-blur); box-shadow: var(--hud-shadow); }
 .rail-group button { width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; }
 .rail-group button:hover:not(:disabled) { background: #ffffff1f; }
-.rail-group button[aria-pressed=true] { background: var(--hud-text); color: var(--hud-ink); }
+.rail-group button[aria-pressed=true], .quality-button:not([data-quality=standard]) { background: var(--hud-text); color: var(--hud-ink); }
 .quality-button span { font-size: 11px; font-weight: 800; letter-spacing: .4px; }
 
 /* Driver focus: a lower third in the driver's team colour. */

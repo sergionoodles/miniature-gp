@@ -6,12 +6,14 @@ import { circuitViewExtent, frameCircuitCameraInPlace, interpolateStartPose, sta
 import { buildCircuit } from './circuitWorld'
 import { createSceneRenderer, type FrameLook } from './sceneRenderer'
 import { orbitCameraInPlace } from './finishOrbit'
-import { loadGraphicsQuality, saveGraphicsQuality, type GraphicsQuality } from './graphicsQuality'
+import { nextGraphicsQuality, type GraphicsQuality } from './graphicsQuality'
 import type { WeatherTimeline } from './raceWeather'
 import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, createSelectionMarker, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
 import type { SceneCapture } from './racePhoto'
 import { SceneHandoff } from './SceneHandoff'
+import { buildWireframeCircuit } from './wireframeWorld'
+import { WIREFRAME_MARKER_COLOR } from './wireframeStyle'
 
 const MARKER_PULSE_SPEED = 0.005
 const MARKER_PULSE_SCALE = 0.08
@@ -20,6 +22,14 @@ const LABEL_LIFT = 1.4
 const STANDARD_FRAME_MS = 30
 // Matches the CSS breakpoint where the results sheet covers the whole screen.
 const COMPACT_LAYOUT_WIDTH = 760
+
+// Each title names the current setting and what selecting the button switches to.
+const QUALITY_TITLES: Record<GraphicsQuality, string> = {
+  standard: 'Standard graphics: a lighter scene for any computer. Select for high graphics.',
+  high: 'High graphics: effects, shadows and ambient occlusion. Select for wireframe graphics.',
+  wireframe: 'Wireframe graphics: the race as a neon simulation. Select for standard graphics.',
+}
+const QUALITY_LABELS: Record<GraphicsQuality, string> = { standard: 'SD', high: 'HD', wireframe: 'WF' }
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
 type CameraView = 'overview' | 'top'
@@ -43,10 +53,12 @@ type Props = {
   isEmbed?: boolean
   isSoundOn: boolean
   onToggleSound: () => void
+  quality: GraphicsQuality
+  onQualityChange: (quality: GraphicsQuality) => void
   ref?: Ref<SceneHandle>
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isEmbed = false, isSoundOn, onToggleSound, ref }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isEmbed = false, isSoundOn, onToggleSound, quality, onQualityChange, ref }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid, isOrbiting })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
@@ -56,7 +68,6 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   // Changing quality rebuilds the scene; this carries the camera over so only the graphics change.
   const poseToRestoreRef = useRef<CameraPose | null>(null)
   const [view, setView] = useState<CameraView>('overview')
-  const [quality, setQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
   const [error, setError] = useState<string | null>(null)
   const [handoff, setHandoff] = useState<Handoff | null>(null)
 
@@ -67,7 +78,10 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const { scene, overlay, cars, locations, project, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = buildCircuit(replay, circuit, weatherAt, quality)
+    const isWireframe = quality === 'wireframe'
+    const { scene, overlay, cars, locations, project, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = isWireframe
+      ? buildWireframeCircuit(replay, circuit, weatherAt)
+      : buildCircuit(replay, circuit, weatherAt, quality)
     const camera = new THREE.OrthographicCamera(-130, 130, 100, -100, 0.1, 1000)
     let pipeline: ReturnType<typeof createSceneRenderer>
     try {
@@ -151,9 +165,9 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     const observer = new ResizeObserver(resize)
     observer.observe(container)
     resize()
-    const marker = createSelectionMarker()
+    const marker = isWireframe ? createSelectionMarker(WIREFRAME_MARKER_COLOR) : createSelectionMarker()
     overlay.add(marker)
-    const labels = createDriverLabels(replay.drivers, overlay)
+    const labels = createDriverLabels(replay.drivers, overlay, isWireframe ? 'terminal' : 'rounded')
     const isolateDriver = createHoverIsolation(scene, cars)
     const pointerStart = new THREE.Vector2()
     const raycaster = new THREE.Raycaster()
@@ -180,7 +194,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     captureRef.current = () => lastLook && { ...pipeline.capture(lastLook), bounds: container.getBoundingClientRect() }
     snapshotRef.current = () => lastLook && pipeline.snapshot(lastLook)
     // Standard quality draws at most 30 frames a second, halving GPU work on high refresh screens.
-    const minimumFrameMs = quality === 'high' ? 0 : STANDARD_FRAME_MS
+    const minimumFrameMs = quality === 'standard' ? STANDARD_FRAME_MS : 0
     const animate = (now: number) => {
       if (now - previousFrame < minimumFrameMs) {
         frame = requestAnimationFrame(animate)
@@ -293,13 +307,16 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     }
   }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, onSceneReady, quality, isEmbed])
 
-  const toggleQuality = () => {
-    const next = quality === 'high' ? 'standard' : 'high'
+  // The last frame of the old scene covers the rebuild and fades out once the new one draws.
+  const prepareRebuild = () => {
     poseToRestoreRef.current = cameraPoseRef.current()
     const image = snapshotRef.current()
     setHandoff(image && { image, isFading: false })
-    setQuality(next)
-    saveGraphicsQuality(next)
+  }
+
+  const toggleQuality = () => {
+    prepareRebuild()
+    onQualityChange(nextGraphicsQuality(quality))
   }
 
   const changeView = (next: CameraView) => {
@@ -341,8 +358,8 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
         <button type="button" aria-label="Take a photo" disabled={error !== null} title="Take a photo of the race as framed" onClick={takePhoto}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3.2L9 5h6l1.8 2.5H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.6" /></svg>
         </button>
-        <button className="quality-button" type="button" aria-label="HD graphics" aria-pressed={quality === 'high'} title={quality === 'high' ? 'High graphics: effects, shadows and ambient occlusion. Select for a lighter mode.' : 'Standard graphics: a lighter scene for any computer. Select for high graphics.'} onClick={toggleQuality}>
-          <span aria-hidden="true">HD</span>
+        <button className="quality-button" type="button" aria-label={`Graphics: ${quality}`} data-quality={quality} title={QUALITY_TITLES[quality]} onClick={toggleQuality}>
+          <span aria-hidden="true">{QUALITY_LABELS[quality]}</span>
         </button>
         <button type="button" aria-label="Sound" aria-pressed={isSoundOn} title={isSoundOn ? 'Sound on: race music and effects. Select to mute.' : 'Sound off. Select to play race music and effects.'} onClick={onToggleSound}>
           <svg viewBox="0 0 24 24" aria-hidden="true">

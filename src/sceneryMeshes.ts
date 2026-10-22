@@ -330,6 +330,7 @@ export function addWater(scene: THREE.Scene, field: TerrainField, environment: C
     const mesh = new THREE.Mesh(geometry, material)
     mesh.position.set(plane.x, WATER_LEVEL, plane.z)
     mesh.receiveShadow = true
+    mesh.userData.wireframeRole = 'water'
     scene.add(mesh)
   }
   if (!isDetailed) {

@@ -65,6 +65,8 @@ function stubBrowser() {
     location: { pathname: '/' },
     history: { pushState: vi.fn(), replaceState: vi.fn() },
     addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    localStorage: { getItem: () => null, setItem: vi.fn() },
+    matchMedia: () => ({ matches: false }),
     setTimeout, clearTimeout, clearInterval,
   })
   vi.stubGlobal('document', { title: '', removeEventListener: vi.fn() })
@@ -205,6 +207,8 @@ it('only changes the race and route after a Grand Prix is selected in the browse
     location, history: { pushState, replaceState },
     addEventListener: (event: string, listener: () => void) => listeners.set(event, listener),
     removeEventListener: (event: string) => listeners.delete(event),
+    localStorage: { getItem: () => null, setItem: vi.fn() },
+    matchMedia: () => ({ matches: false }),
     setTimeout, clearTimeout, clearInterval,
   })
   vi.stubGlobal('document', { title: '', removeEventListener: vi.fn() })
