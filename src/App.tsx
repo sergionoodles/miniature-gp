@@ -16,6 +16,7 @@ import { raceStatusDisplay } from './raceHud'
 import { raceResults } from './raceResults'
 import { isCautionStatus, musicMoodFor } from './raceMusic'
 import { useRaceAudio } from './useRaceAudio'
+import { loadGraphicsQuality, saveGraphicsQuality, type GraphicsQuality } from './graphicsQuality'
 import { nextRaceAfter, nextSeason } from './nextRace'
 import type { RacePhotoHud, SceneCapture } from './racePhoto'
 import { createWeatherTimeline, describeWeather } from './raceWeather'
@@ -76,6 +77,7 @@ export default function App() {
   const [isResultsOpen, setIsResultsOpen] = useState(false)
   const [followingSeasonRace, setFollowingSeasonRace] = useState<{ year: number; race: RaceOption } | null>(null)
   const [photo, setPhoto] = useState<{ capture: SceneCapture; hud: RacePhotoHud; resumesPlayback: boolean } | null>(null)
+  const [graphicsQuality, setGraphicsQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
   const timeRef = useRef(0)
   const previousNotificationTimeRef = useRef(0)
   const isPlayingRef = useRef(false)
@@ -528,12 +530,17 @@ export default function App() {
     if (!hasStarted && countdown === null) setCountdown(START_LIGHT_COUNT)
   }, [isEmbed, replay, unavailable, sceneReady, hasShownLoaderSteps, hasStarted, countdown])
 
+  const changeGraphicsQuality = (quality: GraphicsQuality) => {
+    setGraphicsQuality(quality)
+    saveGraphicsQuality(quality)
+  }
+
   const runningOrder = <RunningOrder title={isEmbed ? 'Order' : orderTitle} drivers={order} selectedDriver={selectedDriver} stoppedDrivers={stoppedDrivers} isOpen={!isEmbed && isOrderOpen} onHover={setHoveredDriver} onSelect={selectFromOrder} onClose={() => setIsOrderOpen(false)}>
     {!replay && <p className="order-message">{isEmbed ? '—' : error ?? 'Loading race data…'}</p>}
   </RunningOrder>
 
   return (
-    <div className={`app-shell${isEmbed ? ' embed-shell' : ''}${isRaining ? ' raining' : ''}${unavailable ? ' race-unavailable' : ''}`}>
+    <div className={`app-shell${isEmbed ? ' embed-shell' : ''}${graphicsQuality === 'wireframe' ? ' graphics-wireframe' : ''}${isRaining ? ' raining' : ''}${unavailable ? ' race-unavailable' : ''}`}>
       {isEmbed ? <EmbedHeader location={race.location} grandPrix={race.grandPrix} year={year} lap={leaderLap} totalLaps={race.laps} status={replay && !unavailable ? statusDisplay : null} replayPath={racePath(year, race)} /> : <header className="topbar">
         <div className="identity">
           <img className="identity-mark" src="/logo.svg" alt="" />
@@ -568,7 +575,7 @@ export default function App() {
         </TimingTower>}
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay && weatherAt && <TrackScene key={race.id} ref={sceneRef} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isSoundOn={isSoundOn} onToggleSound={toggleSound} isEmbed={isEmbed} />}
+          {replay && weatherAt && <TrackScene key={race.id} ref={sceneRef} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isPlaying={isPlaying} isSoundOn={isSoundOn} onToggleSound={toggleSound} quality={graphicsQuality} onQualityChange={changeGraphicsQuality} isEmbed={isEmbed} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
             <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>

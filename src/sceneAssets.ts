@@ -76,19 +76,26 @@ export function createGrandstand(length: number, teamColors: string[], seed: str
 
 const LABEL_WIDTH = 512
 const LABEL_HEIGHT = 144
+const LABEL_STYLES = {
+  // Matches the HUD cards: dark glass panel, hairline border and an optional team-colour bar.
+  rounded: { panel: '#0d1820eb', border: '#dce4e560', borderWidth: 3, cornerRadius: 18, barRadius: 4, text: '#f2f6f7', font: '600 54px Inter, "Helvetica Neue", Arial, sans-serif' },
+  // Matches the wireframe HUD: a sharp terminal panel with a bright outline and monospaced text.
+  terminal: { panel: '#050608f2', border: '#f2f6f7b3', borderWidth: 4, cornerRadius: 6, barRadius: 2, text: '#f2f6f7', font: '600 50px "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace' },
+}
+export type LabelStyle = keyof typeof LABEL_STYLES
 
-// Matches the HUD cards: dark glass panel, hairline border and an optional team-colour bar.
-export function createLabel(text: string, accent?: string) {
+export function createLabel(text: string, accent?: string, style: LabelStyle = 'rounded') {
+  const look = LABEL_STYLES[style]
   const canvas = document.createElement('canvas')
   canvas.width = LABEL_WIDTH
   canvas.height = LABEL_HEIGHT
   const context = canvas.getContext('2d')
   if (context) {
-    context.fillStyle = '#0d1820eb'
-    context.strokeStyle = '#dce4e560'
-    context.lineWidth = 3
+    context.fillStyle = look.panel
+    context.strokeStyle = look.border
+    context.lineWidth = look.borderWidth
     context.beginPath()
-    context.roundRect(6, 6, LABEL_WIDTH - 12, LABEL_HEIGHT - 32, 18)
+    context.roundRect(6, 6, LABEL_WIDTH - 12, LABEL_HEIGHT - 32, look.cornerRadius)
     context.fill()
     context.stroke()
     context.beginPath()
@@ -99,11 +106,11 @@ export function createLabel(text: string, accent?: string) {
     if (accent) {
       context.fillStyle = accent
       context.beginPath()
-      context.roundRect(30, 34, 10, LABEL_HEIGHT - 92, 4)
+      context.roundRect(30, 34, 10, LABEL_HEIGHT - 92, look.barRadius)
       context.fill()
     }
-    context.fillStyle = '#f2f6f7'
-    context.font = '600 54px Inter, "Helvetica Neue", Arial, sans-serif'
+    context.fillStyle = look.text
+    context.font = look.font
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     context.fillText(text, LABEL_WIDTH / 2 + (accent ? 10 : 0), (LABEL_HEIGHT - 26) / 2 + 2)

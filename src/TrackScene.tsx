@@ -6,12 +6,14 @@ import { circuitViewExtent, frameCircuitCameraInPlace, interpolateStartPose, sta
 import { buildCircuit } from './circuitWorld'
 import { createSceneRenderer, type FrameLook } from './sceneRenderer'
 import { orbitCameraInPlace } from './finishOrbit'
-import { loadGraphicsQuality, saveGraphicsQuality, type GraphicsQuality } from './graphicsQuality'
+import { nextGraphicsQuality, type GraphicsQuality } from './graphicsQuality'
 import type { WeatherTimeline } from './raceWeather'
 import { activeHoverDriver, createDriverLabels, createGhost, createHoverIsolation, createSelectionMarker, positionGhostInPlace } from './driverVisuals'
 import { stoppedAt, type StoppedInterval } from './stoppedCars'
 import type { SceneCapture } from './racePhoto'
 import { SceneHandoff } from './SceneHandoff'
+import { buildWireframeCircuit } from './wireframeWorld'
+import { WIREFRAME_MARKER_COLOR } from './wireframeStyle'
 
 const MARKER_PULSE_SPEED = 0.005
 const MARKER_PULSE_SCALE = 0.08
@@ -20,9 +22,32 @@ const LABEL_LIFT = 1.4
 const STANDARD_FRAME_MS = 30
 // Matches the CSS breakpoint where the results sheet covers the whole screen.
 const COMPACT_LAYOUT_WIDTH = 760
+// Orbit mode turns once a minute, easing in so the camera doesn't jolt into motion.
+const ORBIT_MODE_TURN_SECONDS = 60
+const ORBIT_MODE_SPIN_UP_SECONDS = 2
+// OrbitControls measures autoRotateSpeed in turns per 60 seconds.
+const ORBIT_MODE_SPEED = 60 / ORBIT_MODE_TURN_SECONDS
+// A frame after a hidden tab would otherwise swing the camera a long way at once.
+const MAX_ORBIT_STEP_SECONDS = 0.1
+
+// Each title names the current setting and what selecting the button switches to.
+const QUALITY_TITLES: Record<GraphicsQuality, string> = {
+  standard: 'Standard graphics: a lighter scene for any computer. Select for high graphics.',
+  high: 'High graphics: effects, shadows and ambient occlusion. Select for wireframe graphics.',
+  wireframe: 'Wireframe graphics: the race as a neon simulation. Select for standard graphics.',
+}
+const QUALITY_LABELS: Record<GraphicsQuality, string> = { standard: 'SD', high: 'HD', wireframe: 'WF' }
+// The reset button starts orbit mode once the camera is already reset.
+const CAMERA_MODE_BUTTON_TITLES: Record<CameraMode, { label: string, title: string }> = {
+  rest: { label: 'Orbit camera', title: 'Orbit: slowly circle the circuit' },
+  moved: { label: 'Reset camera', title: 'Reset camera' },
+  orbit: { label: 'Reset camera', title: 'Stop orbiting and reset camera' },
+}
 
 type CameraAction = 'overview' | 'top' | 'in' | 'out' | 'left' | 'right' | 'locate'
 type CameraView = 'overview' | 'top'
+// 'rest' is the reset pose, where the reset button offers orbit mode instead.
+type CameraMode = 'rest' | 'moved' | 'orbit'
 export type SceneHandle = { locateSelectedDriver: () => void }
 type CameraPose = { position: THREE.Vector3, target: THREE.Vector3, zoom: number }
 type Handoff = { image: HTMLCanvasElement, isFading: boolean }
@@ -40,15 +65,18 @@ type Props = {
   onPhoto: (capture: SceneCapture) => void
   showCars?: boolean
   isOrbiting?: boolean
+  isPlaying: boolean
   isEmbed?: boolean
   isSoundOn: boolean
   onToggleSound: () => void
+  quality: GraphicsQuality
+  onQualityChange: (quality: GraphicsQuality) => void
   ref?: Ref<SceneHandle>
 }
 
-export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isEmbed = false, isSoundOn, onToggleSound, ref }: Props) {
+export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver, hoveredDriver, showStartingGrid, stops, onSelectDriver, onSceneReady, onPhoto, showCars = true, isOrbiting = false, isPlaying, isEmbed = false, isSoundOn, onToggleSound, quality, onQualityChange, ref }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid, isOrbiting })
+  const optionsRef = useRef({ selectedDriver, hoveredDriver, showStartingGrid, isOrbiting, isPlaying })
   const actionRef = useRef<(action: CameraAction) => void>(() => {})
   const captureRef = useRef<() => SceneCapture | null>(() => null)
   const cameraPoseRef = useRef<() => CameraPose | null>(() => null)
@@ -56,18 +84,23 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
   // Changing quality rebuilds the scene; this carries the camera over so only the graphics change.
   const poseToRestoreRef = useRef<CameraPose | null>(null)
   const [view, setView] = useState<CameraView>('overview')
-  const [quality, setQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
+  const [cameraMode, setCameraMode] = useState<CameraMode>('rest')
+  // The render loop and camera listeners read the mode without waiting for a render.
+  const cameraModeRef = useRef<CameraMode>('rest')
   const [error, setError] = useState<string | null>(null)
   const [handoff, setHandoff] = useState<Handoff | null>(null)
 
-  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, showStartingGrid, isOrbiting } }, [selectedDriver, hoveredDriver, showStartingGrid, isOrbiting])
+  useEffect(() => { optionsRef.current = { selectedDriver, hoveredDriver, showStartingGrid, isOrbiting, isPlaying } }, [selectedDriver, hoveredDriver, showStartingGrid, isOrbiting, isPlaying])
 
   useImperativeHandle(ref, () => ({ locateSelectedDriver: () => actionRef.current('locate') }), [])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const { scene, overlay, cars, locations, project, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = buildCircuit(replay, circuit, weatherAt, quality)
+    const isWireframe = quality === 'wireframe'
+    const { scene, overlay, cars, locations, project, track, trackHeightAt, updateAtmosphere, updateCarEffects, updateCarLivery } = isWireframe
+      ? buildWireframeCircuit(replay, circuit, weatherAt)
+      : buildCircuit(replay, circuit, weatherAt, quality)
     const camera = new THREE.OrthographicCamera(-130, 130, 100, -100, 0.1, 1000)
     let pipeline: ReturnType<typeof createSceneRenderer>
     try {
@@ -117,6 +150,12 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       controls.update()
     }
     cameraPoseRef.current = () => ({ position: camera.position.clone(), target: controls.target.clone(), zoom: camera.zoom })
+    const markCameraMoved = () => {
+      if (cameraModeRef.current !== 'rest') return
+      cameraModeRef.current = 'moved'
+      setCameraMode('moved')
+    }
+    controls.addEventListener('change', markCameraMoved)
     actionRef.current = (action) => {
       if (action === 'overview' || action === 'top') resetCamera(action === 'top')
       if (action === 'locate' && optionsRef.current.selectedDriver !== null) {
@@ -126,11 +165,14 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
           controls.target.copy(car.position)
           camera.zoom = controls.maxZoom
           camera.updateProjectionMatrix()
+          markCameraMoved()
         }
       }
       if (action === 'in' || action === 'out') {
         camera.zoom = THREE.MathUtils.clamp(camera.zoom * (action === 'in' ? 1.3 : 1 / 1.3), controls.minZoom, controls.maxZoom)
         camera.updateProjectionMatrix()
+        // OrbitControls only reports its own zoom changes, so button zooms are marked here.
+        markCameraMoved()
       }
       if (action === 'left' || action === 'right') {
         camera.position.sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), action === 'left' ? -Math.PI / 8 : Math.PI / 8).add(controls.target)
@@ -151,9 +193,9 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     const observer = new ResizeObserver(resize)
     observer.observe(container)
     resize()
-    const marker = createSelectionMarker()
+    const marker = isWireframe ? createSelectionMarker(WIREFRAME_MARKER_COLOR) : createSelectionMarker()
     overlay.add(marker)
-    const labels = createDriverLabels(replay.drivers, overlay)
+    const labels = createDriverLabels(replay.drivers, overlay, isWireframe ? 'terminal' : 'rounded')
     const isolateDriver = createHoverIsolation(scene, cars)
     const pointerStart = new THREE.Vector2()
     const raycaster = new THREE.Raycaster()
@@ -177,10 +219,11 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     let previousFrame = performance.now()
     let lastLook: FrameLook | null = null
     let orbitSeconds = 0
+    let orbitModeSeconds = 0
     captureRef.current = () => lastLook && { ...pipeline.capture(lastLook), bounds: container.getBoundingClientRect() }
     snapshotRef.current = () => lastLook && pipeline.snapshot(lastLook)
     // Standard quality draws at most 30 frames a second, halving GPU work on high refresh screens.
-    const minimumFrameMs = quality === 'high' ? 0 : STANDARD_FRAME_MS
+    const minimumFrameMs = quality === 'standard' ? STANDARD_FRAME_MS : 0
     const animate = (now: number) => {
       if (now - previousFrame < minimumFrameMs) {
         frame = requestAnimationFrame(animate)
@@ -241,7 +284,12 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
       const isOrbitVisible = options.isOrbiting && !isReducedMotion && window.innerWidth > COMPACT_LAYOUT_WIDTH
       orbitSeconds = isOrbitVisible ? orbitSeconds + deltaSeconds : 0
       if (isOrbitVisible) orbitCameraInPlace(camera, controls.target, deltaSeconds, orbitSeconds)
-      controls.update()
+      // Orbit mode holds still while the race is paused, and the finish orbit takes over while the results are open.
+      const isOrbitMode = cameraModeRef.current === 'orbit' && options.isPlaying && !isOrbitVisible
+      orbitModeSeconds = isOrbitMode ? orbitModeSeconds + deltaSeconds : 0
+      controls.autoRotate = isOrbitMode
+      controls.autoRotateSpeed = ORBIT_MODE_SPEED * THREE.MathUtils.smoothstep(orbitModeSeconds, 0, ORBIT_MODE_SPIN_UP_SECONDS)
+      controls.update(Math.min(deltaSeconds, MAX_ORBIT_STEP_SECONDS))
       lastLook = { ...look, polarAngle: controls.getPolarAngle() }
       pipeline.render(lastLook)
       if (!hasRendered) {
@@ -259,6 +307,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     return () => {
       cancelAnimationFrame(frame)
       observer.disconnect()
+      controls.removeEventListener('change', markCameraMoved)
       controls.dispose()
       canvas.removeEventListener('pointerdown', pointerDown)
       canvas.removeEventListener('pointerup', pointerUp)
@@ -293,18 +342,38 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
     }
   }, [replay, weatherAt, timeRef, circuit, stops, onSelectDriver, onSceneReady, quality, isEmbed])
 
-  const toggleQuality = () => {
-    const next = quality === 'high' ? 'standard' : 'high'
+  // The last frame of the old scene covers the rebuild and fades out once the new one draws.
+  const prepareRebuild = () => {
     poseToRestoreRef.current = cameraPoseRef.current()
     const image = snapshotRef.current()
     setHandoff(image && { image, isFading: false })
-    setQuality(next)
-    saveGraphicsQuality(next)
   }
 
+  const toggleQuality = () => {
+    prepareRebuild()
+    onQualityChange(nextGraphicsQuality(quality))
+  }
+
+  const changeCameraMode = (mode: CameraMode) => {
+    cameraModeRef.current = mode
+    setCameraMode(mode)
+  }
+
+  // Switching between overview and top keeps an orbit going around the new view.
   const changeView = (next: CameraView) => {
     setView(next)
     actionRef.current(next)
+    if (cameraModeRef.current !== 'orbit') changeCameraMode('rest')
+  }
+
+  const resetOrOrbitCamera = () => {
+    if (cameraMode === 'rest') {
+      changeCameraMode('orbit')
+      return
+    }
+
+    actionRef.current(view)
+    changeCameraMode('rest')
   }
 
   const takePhoto = () => {
@@ -333,16 +402,18 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
         <button className={isEmbed ? undefined : 'rail-detail'} type="button" aria-label="Zoom out" title="Zoom out" onClick={() => actionRef.current('out')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
         </button>
-        {!isEmbed && <button type="button" aria-label="Reset camera" title="Reset camera" onClick={() => changeView(view)}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9V5a2 2 0 0 1 2-2h4M15 3h4a2 2 0 0 1 2 2v4M21 15v4a2 2 0 0 1-2 2h-4M9 21H5a2 2 0 0 1-2-2v-4" /><circle cx="12" cy="12" r="2.5" /></svg>
+        {!isEmbed && <button type="button" aria-label={CAMERA_MODE_BUTTON_TITLES[cameraMode].label} title={CAMERA_MODE_BUTTON_TITLES[cameraMode].title} onClick={resetOrOrbitCamera}>
+          {cameraMode === 'rest'
+            ? <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><circle cx="19" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><path d="M10.4 21.9a10 10 0 0 0 9.941-15.416" /><path d="M13.5 2.1a10 10 0 0 0-9.841 15.416" /></svg>
+            : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9V5a2 2 0 0 1 2-2h4M15 3h4a2 2 0 0 1 2 2v4M21 15v4a2 2 0 0 1-2 2h-4M9 21H5a2 2 0 0 1-2-2v-4" /><circle cx="12" cy="12" r="2.5" /></svg>}
         </button>}
       </div>
       {!isEmbed && <div className="rail-group">
         <button type="button" aria-label="Take a photo" disabled={error !== null} title="Take a photo of the race as framed" onClick={takePhoto}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3.2L9 5h6l1.8 2.5H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.6" /></svg>
         </button>
-        <button className="quality-button" type="button" aria-label="HD graphics" aria-pressed={quality === 'high'} title={quality === 'high' ? 'High graphics: effects, shadows and ambient occlusion. Select for a lighter mode.' : 'Standard graphics: a lighter scene for any computer. Select for high graphics.'} onClick={toggleQuality}>
-          <span aria-hidden="true">HD</span>
+        <button className="quality-button" type="button" aria-label={`Graphics: ${quality}`} title={QUALITY_TITLES[quality]} onClick={toggleQuality}>
+          <span aria-hidden="true">{QUALITY_LABELS[quality]}</span>
         </button>
         <button type="button" aria-label="Sound" aria-pressed={isSoundOn} title={isSoundOn ? 'Sound on: race music and effects. Select to mute.' : 'Sound off. Select to play race music and effects.'} onClick={onToggleSound}>
           <svg viewBox="0 0 24 24" aria-hidden="true">

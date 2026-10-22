@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { createRibbonGeometry, roadSideRoom, startingGridLocations } from './circuitGeometry'
 import { createAdvertisingTexture, createAsphaltTextures, createGravelTexture, createKerbTexture, createVergeTexture } from './proceduralTextures'
-import { box, createLabel, createMergedMesh } from './sceneAssets'
+import { box, createLabel, createMergedMesh, type LabelStyle } from './sceneAssets'
 import { createBridgeWallGeometry, type TrackCrossing } from './trackCrossings'
 import { PIT_LANE_WIDTH } from './pitLane'
 
@@ -168,6 +168,9 @@ function addSurfaces(scene: THREE.Scene, track: THREE.Vector3[], elevations: num
   const lines = new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.7 })
   const gravel = new THREE.MeshStandardMaterial({ color: 0xd2c29c, roughness: 1, map: createGravelTexture() })
   const verge = new THREE.MeshStandardMaterial({ color: vergeColor, roughness: 1, map: createVergeTexture() })
+  asphalt.userData.wireframeRole = 'road'
+  lines.userData.wireframeRole = 'road-paint'
+  gravel.userData.wireframeRole = verge.userData.wireframeRole = 'runoff'
   // Only the asphalt and edge lines are raised onto a bridge; wider layers stay on the ground,
   // where a neighbouring section's asphalt can cover them.
   const layers: { width: number; height: number; material: THREE.MeshStandardMaterial; isRaised: boolean; limits?: [number, number][] }[] = [
@@ -202,6 +205,7 @@ function addKerbs(scene: THREE.Scene, track: THREE.Vector3[], frames: Frame[], e
     }
   }
   const material = new THREE.MeshStandardMaterial({ map: createKerbTexture(), roughness: 0.55 })
+  material.userData.wireframeRole = 'kerb'
   const kerbs = mergedOrNull(parts, material)
   if (kerbs) {
     kerbs.castShadow = false
@@ -287,7 +291,7 @@ function addFloodlights(scene: THREE.Scene, frames: Frame[], sides: ReturnType<t
   return glow
 }
 
-function addStartLine(scene: THREE.Scene, overlay: THREE.Scene, track: THREE.Vector3[], driverCount: number) {
+function addStartLine(scene: THREE.Scene, overlay: THREE.Scene, track: THREE.Vector3[], driverCount: number, labelStyle: LabelStyle) {
   const tangent = track[1].clone().sub(track[0]).normalize()
   const rotation = Math.atan2(tangent.x, tangent.z)
   const start = new THREE.Group()
@@ -321,7 +325,7 @@ function addStartLine(scene: THREE.Scene, overlay: THREE.Scene, track: THREE.Vec
     gridMarks.castShadow = false
     scene.add(gridMarks)
   }
-  const label = createLabel('START / FINISH')
+  const label = createLabel('START / FINISH', undefined, labelStyle)
   label.position.copy(track[0]).add(new THREE.Vector3(0, GANTRY_HEIGHT + 0.6, 0))
   label.scale.multiplyScalar(1.3)
   overlay.add(label)
@@ -334,12 +338,12 @@ export function addBridges(scene: THREE.Scene, track: THREE.Vector3[], elevation
   scene.add(walls)
 }
 
-type TracksideOptions = { vergeColor: number; isFloodlit: boolean; driverCount: number; seed: string; pitLane: THREE.Vector3[] }
+type TracksideOptions = { vergeColor: number; isFloodlit: boolean; driverCount: number; seed: string; pitLane: THREE.Vector3[]; labelStyle?: LabelStyle }
 
 // Everything painted on or built right beside the racing line. Returns the asphalt (for rain), the
 // line and verge paint the pit lane reuses, the surfaces floodlights brighten at night and the
 // emissive trackside fixtures.
-export function addTrackside(scene: THREE.Scene, overlay: THREE.Scene, track: THREE.Vector3[], elevations: number[], { vergeColor, isFloodlit, driverCount, seed, pitLane }: TracksideOptions) {
+export function addTrackside(scene: THREE.Scene, overlay: THREE.Scene, track: THREE.Vector3[], elevations: number[], { vergeColor, isFloodlit, driverCount, seed, pitLane, labelStyle = 'rounded' }: TracksideOptions) {
   const frames = trackFrames(track)
   const outsides = cornerOutsides(track, frames)
   const pitSides = pitLaneSides(frames, pitLane)
@@ -347,7 +351,7 @@ export function addTrackside(scene: THREE.Scene, overlay: THREE.Scene, track: TH
   const kerbs = addKerbs(scene, track, frames, elevations, outsides, room, pitSides)
   const barriers = barrierRuns(track, elevations, pitSides)
   const boards = addBarriers(scene, frames, barriers, seed)
-  addStartLine(scene, overlay, track, driverCount)
+  addStartLine(scene, overlay, track, driverCount, labelStyle)
   const fixtures = isFloodlit ? [addFloodlights(scene, frames, barriers)] : []
   const litSurfaces = [...surfaces, kerbs, boards]
   litSurfaces.forEach((material) => {

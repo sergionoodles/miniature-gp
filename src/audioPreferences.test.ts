@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadSoundPreference, saveSoundPreference } from './audioPreferences'
-import { loadGraphicsQuality, saveGraphicsQuality } from './graphicsQuality'
+import { loadGraphicsQuality, nextGraphicsQuality, saveGraphicsQuality } from './graphicsQuality'
 
 describe('browser preferences', () => {
   const values = new Map<string, string>()
@@ -42,6 +42,18 @@ describe('browser preferences', () => {
 
     expect(loadSoundPreference()).toBe(false)
     expect(loadGraphicsQuality()).toBe('standard')
+  })
+
+  it('restores the wireframe setting', () => {
+    saveGraphicsQuality('wireframe')
+
+    expect(loadGraphicsQuality()).toBe('wireframe')
+  })
+
+  it('steps through standard, high and wireframe graphics and wraps around', () => {
+    expect(nextGraphicsQuality('standard')).toBe('high')
+    expect(nextGraphicsQuality('high')).toBe('wireframe')
+    expect(nextGraphicsQuality('wireframe')).toBe('standard')
   })
 
   it('uses defaults and allows settings changes when storage is blocked', () => {

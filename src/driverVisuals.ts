@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createLabel } from './sceneAssets'
+import { createLabel, type LabelStyle } from './sceneAssets'
 import { addShaderPatch, sceneMaterials } from './shaderPatches'
 import type { Driver } from './replay'
 
@@ -54,12 +54,12 @@ export function positionGhostInPlace(ghost: THREE.Sprite, location: THREE.Vector
   ghost.position.copy(center).addScaledVector(normal, 5.5).setY(3)
 }
 
-const MARKER_COLOR = 0xe56c3d
+export const MARKER_COLOR = 0xe56c3d
 
 // Ground ring, soft halo and outer tick ring, drawn over the scene so the car stays findable.
-export function createSelectionMarker() {
+export function createSelectionMarker(color: THREE.ColorRepresentation = MARKER_COLOR) {
   const flat = (geometry: THREE.BufferGeometry) => geometry.rotateX(-Math.PI / 2)
-  const material = (opacity: number) => new THREE.MeshBasicMaterial({ color: MARKER_COLOR, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false })
+  const material = (opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false })
   const marker = new THREE.Group()
   marker.add(
     new THREE.Mesh(flat(new THREE.CircleGeometry(1.95, 40)), material(0.16)),
@@ -72,9 +72,9 @@ export function createSelectionMarker() {
   return marker
 }
 
-export function createDriverLabels(drivers: Driver[], scene: THREE.Scene) {
+export function createDriverLabels(drivers: Driver[], scene: THREE.Scene, style: LabelStyle = 'rounded') {
   return new Map(drivers.map((driver) => {
-    const label = createLabel(`${driver.code}  ${driver.number}`, driver.color)
+    const label = createLabel(`${driver.code}  ${driver.number}`, driver.color, style)
     label.visible = false
     scene.add(label)
     return [driver.number, label] as const
@@ -84,7 +84,7 @@ export function createDriverLabels(drivers: Driver[], scene: THREE.Scene) {
 export function createHoverIsolation(scene: THREE.Scene, cars: Map<number, THREE.Group>) {
   const owners = new Map<THREE.Material, number>()
   cars.forEach((car, number) => car.traverse((part) => {
-    if (part instanceof THREE.Mesh && !Array.isArray(part.material)) owners.set(part.material, number)
+    if ((part instanceof THREE.Mesh || part instanceof THREE.Line) && !Array.isArray(part.material)) owners.set(part.material, number)
   }))
   const uniforms = new Map<THREE.Material, { value: number }>()
   sceneMaterials(scene).forEach((material) => {

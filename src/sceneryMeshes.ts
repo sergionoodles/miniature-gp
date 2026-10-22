@@ -316,6 +316,8 @@ export function addWater(scene: THREE.Scene, field: TerrainField, environment: C
     const positions = geometry.getAttribute('position')
     const uvs = geometry.getAttribute('uv')
     const colors = new Float32Array(positions.count * 3)
+    // 0 over deep water, 1 at the shore; the wireframe look draws its surf lines from it.
+    const shallowness = new Float32Array(positions.count)
     for (let index = 0; index < positions.count; index++) {
       const x = positions.getX(index) + plane.x
       const z = positions.getZ(index) + plane.z
@@ -323,13 +325,16 @@ export function addWater(scene: THREE.Scene, field: TerrainField, environment: C
       uvs.setXY(index, x / WATER_RIPPLE_SIZE, z / WATER_RIPPLE_SIZE)
       // Shallows over the shelving bed read lighter, so every shore gets a turquoise fringe.
       const depth = plane.segments > 1 ? WATER_LEVEL - field.sample(x, z).height : Infinity
-      const color = deep.clone().lerp(shallow, 1 - THREE.MathUtils.smoothstep(depth, 0, SHALLOW_DEPTH))
+      shallowness[index] = 1 - THREE.MathUtils.smoothstep(depth, 0, SHALLOW_DEPTH)
+      const color = deep.clone().lerp(shallow, shallowness[index])
       colors.set([color.r, color.g, color.b], index * 3)
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    geometry.setAttribute('shallowness', new THREE.BufferAttribute(shallowness, 1))
     const mesh = new THREE.Mesh(geometry, material)
     mesh.position.set(plane.x, WATER_LEVEL, plane.z)
     mesh.receiveShadow = true
+    mesh.userData.wireframeRole = 'water'
     scene.add(mesh)
   }
   if (!isDetailed) {

@@ -73,6 +73,48 @@ const LensShader = {
     }`,
 }
 
+// The wireframe simulation's screen: faint scanlines, colour fringing toward the corners and a
+// dark vignette, like a race seen on a monitor.
+const WIREFRAME_BLOOM_RADIUS = 0.4
+// Its outlines are plain colours near 1, so a low threshold lets every bright line glow.
+const WIREFRAME_BLOOM_THRESHOLD = 0.35
+const SCANLINE_PERIOD_PIXELS = 3
+const SCANLINE_DEPTH = 0.14
+const ABERRATION_PIXELS = 1.6
+const WIREFRAME_VIGNETTE = 0.5
+
+const SimulationScreenShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    resolution: { value: new THREE.Vector2(1, 1) },
+    scanlinePeriod: { value: SCANLINE_PERIOD_PIXELS },
+    scanlineDepth: { value: SCANLINE_DEPTH },
+    aberration: { value: ABERRATION_PIXELS },
+    vignette: { value: WIREFRAME_VIGNETTE },
+  },
+  vertexShader: LensShader.vertexShader,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    uniform float scanlinePeriod;
+    uniform float scanlineDepth;
+    uniform float aberration;
+    uniform float vignette;
+    varying vec2 vUv;
+    void main() {
+      vec2 centred = ( vUv - 0.5 ) * vec2( resolution.x / resolution.y, 1.0 );
+      float edge = length( centred );
+      vec2 fringe = ( vUv - 0.5 ) * 2.0 * aberration * edge / resolution;
+      vec4 color = texture2D( tDiffuse, vUv );
+      color.r = texture2D( tDiffuse, vUv + fringe ).r;
+      color.b = texture2D( tDiffuse, vUv - fringe ).b;
+      float scanline = 0.5 + 0.5 * cos( gl_FragCoord.y * 6.28318 / scanlinePeriod );
+      color.rgb *= 1.0 - scanlineDepth * scanline;
+      color.rgb *= 1.0 - vignette * smoothstep( 0.35, 1.2, edge );
+      gl_FragColor = color;
+    }`,
+}
+
 // A soft outdoor sky for image-based lighting: glossy paint, wet asphalt and water reflect a
 // bright horizon instead of the black void a scene without an environment gives them.
 export function createSkyEnvironment(renderer: THREE.WebGLRenderer) {
@@ -118,19 +160,24 @@ const MAX_PHOTO_EDGE = 4096
 
 // In high quality the race scene goes through the post chain; the overlay (labels, markers,
 // ghosts) is always drawn afterwards straight to the canvas so text stays crisp and exact in colour.
+// Wireframe has a single level: unlit, so it skips the sky lighting and shadows, keeps its neon
+// untouched by tone mapping and always draws its glow and screen effects.
 export function createSceneRenderer(scene: THREE.Scene, overlay: THREE.Scene, camera: THREE.Camera, quality: GraphicsQuality) {
   const isHigh = quality === 'high'
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: isHigh ? 'high-performance' : 'default' })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isHigh ? MAX_PIXEL_RATIO : STANDARD_PIXEL_RATIO))
+  const isWireframe = quality === 'wireframe'
+  const isStandard = quality === 'standard'
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: isStandard ? 'default' : 'high-performance' })
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isStandard ? STANDARD_PIXEL_RATIO : MAX_PIXEL_RATIO))
   renderer.outputColorSpace = THREE.SRGBColorSpace
-  renderer.toneMapping = THREE.NeutralToneMapping
+  renderer.toneMapping = isWireframe ? THREE.NoToneMapping : THREE.NeutralToneMapping
   renderer.toneMappingExposure = EXPOSURE
   renderer.shadowMap.enabled = isHigh
   renderer.shadowMap.type = THREE.PCFShadowMap
   renderer.info.autoReset = false
-  const environment = createSkyEnvironment(renderer)
+  const environment = isWireframe ? null : createSkyEnvironment(renderer)
   scene.environment = environment
-  const post = isHigh ? createPostChain(renderer, scene, camera) : null
+  const createPost = isWireframe ? createWireframePostChain : createPostChain
+  const post = isStandard ? null : createPost(renderer, scene, camera)
 
   let size = { width: 1, height: 1 }
   const setSize = (width: number, height: number) => {
@@ -173,7 +220,7 @@ export function createSceneRenderer(scene: THREE.Scene, overlay: THREE.Scene, ca
   }
   const dispose = () => {
     post?.dispose()
-    environment.dispose()
+    environment?.dispose()
     renderer.dispose()
   }
   return { renderer, canvas: renderer.domElement, setSize, render, capture, snapshot: copyFrame, dispose }
@@ -212,6 +259,33 @@ function createPostChain(renderer: THREE.WebGLRenderer, scene: THREE.Scene, came
     const resolution: THREE.Vector2 = lens.uniforms.resolution.value
     // Looking straight down there is no depth to fake, so the blur fades in as the view tilts.
     lens.uniforms.blurPixels.value = resolution.y * TILT_BLUR_SHARE * THREE.MathUtils.smoothstep(polarAngle, 0.08, 0.6)
+    composer.render()
+  }
+  const dispose = () => {
+    composer.passes.forEach((pass) => pass.dispose())
+    composer.dispose()
+  }
+  return { setSize, render, dispose }
+}
+
+function createWireframePostChain(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
+  const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: MSAA_SAMPLES })
+  const composer = new EffectComposer(renderer, target)
+  composer.addPass(new RenderPass(scene, camera))
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0, WIREFRAME_BLOOM_RADIUS, WIREFRAME_BLOOM_THRESHOLD)
+  composer.addPass(bloom)
+  const screen = new ShaderPass(SimulationScreenShader)
+  composer.addPass(screen)
+  composer.addPass(new OutputPass())
+  const setSize = (width: number, height: number) => {
+    composer.setPixelRatio(renderer.getPixelRatio())
+    composer.setSize(width, height)
+    screen.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio())
+    // Scanlines keep the same spacing on screen at any pixel ratio, photos included.
+    screen.uniforms.scanlinePeriod.value = SCANLINE_PERIOD_PIXELS * renderer.getPixelRatio()
+  }
+  const render = ({ bloom: bloomStrength }: FrameLook) => {
+    bloom.strength = bloomStrength
     composer.render()
   }
   const dispose = () => {

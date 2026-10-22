@@ -1,0 +1,72 @@
+/* Wireframe graphics: the HUD turns into a terminal readout to match the simulation. Monospaced
+   type, near-square panels and controls, hairline borders and flat surfaces without blur or
+   shadow. Highlights stay white; graphics such as the wheel, lights and swatches keep their shapes. */
+.graphics-wireframe {
+  --wire-neon: #00e5ff; --wire-glow: 0 0 10px #ffffff40; --wire-radius: 2px;
+  --hud-surface: #040506eb; --hud-surface-solid: #040506fa; --hud-line: #dce4e524; --hud-line-strong: #dce4e566;
+  --hud-text: #f2f5f6; --hud-dim: #8a9499; --hud-hover: #ffffff14; --hud-ink: #040506;
+  --hud-radius: var(--wire-radius); --hud-blur: none; --hud-shadow: none;
+  --hud-background: #040506f2; --hud-border: #dce4e533; --hud-muted: #8a9499;
+  --display-font: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--display-font);
+}
+
+/* Panels and controls lose their rounding. */
+.graphics-wireframe :is(select, .race-share-button, .race-share-close, .race-share-option input, .race-share-option button, .race-toast,
+  .rail-group button, .focus-close, .focus-locate, .cta-button, .start-lights, .unavailable-panel, .unavailable-panel button, .dock-play, .dock-skip,
+  .order-toggle, .order-close, .condition-status, .results-card, .results-close, .results-actions button, .photo-panel, .photo-close,
+  .photo-layers label, .photo-actions button, .photo-frame, .embed-finish, .embed-open, .embed-shell .rail-group) { border-radius: var(--wire-radius); }
+
+.graphics-wireframe .topbar, .graphics-wireframe .app-footer { background: var(--hud-surface-solid); backdrop-filter: none; }
+.graphics-wireframe .app-name { font-weight: 600; letter-spacing: 3px; }
+.graphics-wireframe .race-stage, .graphics-wireframe .scene-error { background: #030405; }
+.graphics-wireframe select:hover { border-color: var(--hud-line-strong); }
+
+/* Timing tower and panels: flat and outlined, with the key readouts glowing softly. */
+.graphics-wireframe .race-title h1 { font-weight: 500; letter-spacing: .02em; text-shadow: var(--wire-glow); }
+.graphics-wireframe .condition-status { background: color-mix(in srgb, var(--tone) 10%, transparent); border-left-width: 2px; }
+.graphics-wireframe .condition-status strong { font-weight: 700; color: var(--tone); }
+.graphics-wireframe .lap-title::before, .graphics-wireframe .race-start-countdown > span::before { content: '> '; }
+.graphics-wireframe .lap-value b, .graphics-wireframe .focus-position { font-weight: 600; text-shadow: var(--wire-glow); }
+/* The lap bar reads as a block-character gauge. */
+.graphics-wireframe .lap-progress { height: 6px; background: repeating-linear-gradient(90deg, #ffffff1a 0 5px, transparent 5px 7px); }
+.graphics-wireframe .lap-progress i { background: repeating-linear-gradient(90deg, var(--hud-text) 0 5px, transparent 5px 7px); }
+.graphics-wireframe .order-row { border-bottom-color: #ffffff0a; }
+.graphics-wireframe .order-row.is-selected { background: color-mix(in srgb, var(--team-color) 18%, transparent); box-shadow: inset 2px 0 0 var(--team-color); }
+.graphics-wireframe .order-code { letter-spacing: 1px; }
+.graphics-wireframe .race-toast { border-left: 2px solid var(--hud-text); }
+.graphics-wireframe .driver-focus { border-left-width: 2px; background: linear-gradient(100deg, color-mix(in srgb, var(--team-color) 14%, transparent), transparent 65%), var(--hud-surface); }
+
+/* Controls: outlined until active, then filled in white. */
+.graphics-wireframe .rail-group { gap: 1px; padding: 2px; }
+.graphics-wireframe .rail-group button:hover:not(:disabled) { background: var(--hud-hover); }
+.graphics-wireframe .rail-group button[aria-pressed=true] { background: var(--hud-text); color: var(--hud-ink); box-shadow: var(--wire-glow); }
+.graphics-wireframe .cta-button, .graphics-wireframe .unavailable-panel button { border: 1px solid var(--hud-text); background: var(--hud-surface-solid); color: var(--hud-text); font-weight: 700; letter-spacing: 2px; box-shadow: var(--wire-glow); }
+.graphics-wireframe .cta-button:hover, .graphics-wireframe .unavailable-panel button:hover { background: var(--hud-text); color: var(--hud-ink); }
+.graphics-wireframe .cta-button .play-icon { border-left-color: currentColor; }
+.graphics-wireframe .focus-locate, .graphics-wireframe .race-share-option button, .graphics-wireframe .photo-actions button, .graphics-wireframe .results-actions button { border-color: var(--hud-line-strong); background: transparent; }
+.graphics-wireframe .focus-locate:hover, .graphics-wireframe .race-share-option button:hover, .graphics-wireframe .photo-actions button:hover, .graphics-wireframe .results-actions button:hover { background: var(--hud-hover); }
+.graphics-wireframe .race-start-countdown, .graphics-wireframe .unavailable-panel { box-shadow: none; }
+.graphics-wireframe .start-lights { border-color: var(--hud-line-strong); background: var(--hud-ink); }
+
+/* Replay dock: an outlined transport key and a hairline timeline. */
+.graphics-wireframe .dock-play { border: 1px solid var(--hud-text); background: transparent; color: var(--hud-text); }
+.graphics-wireframe .dock-play:hover:not(:disabled) { background: var(--hud-text); color: var(--hud-ink); }
+.graphics-wireframe .dock-play .play-icon { border-left-color: currentColor; }
+.graphics-wireframe .dock-play .pause-icon { border-inline-color: currentColor; }
+.graphics-wireframe .timeline::-webkit-slider-runnable-track { height: 2px; }
+.graphics-wireframe .timeline::-moz-range-track { height: 2px; }
+.graphics-wireframe .timeline::-moz-range-progress { height: 2px; }
+
+/* Loader: the usual wheel, lit by a neon rim and hub. */
+.graphics-wireframe .race-loader { background: radial-gradient(ellipse at 50% 45%, #10161a 0, #06080a 55%, #030405 100%); }
+.graphics-wireframe .loader-wheel { border-color: #07090b; background: repeating-conic-gradient(#9aa3a8 0deg 13deg, #161b1f 13deg 72deg); box-shadow: inset 0 0 0 2px var(--wire-neon), 0 0 0 1px var(--wire-neon), 0 0 22px #00e5ff8c; }
+.graphics-wireframe .loader-wheel span { background: var(--wire-neon); box-shadow: 0 0 0 3px #07090b, 0 0 16px var(--wire-neon); }
+.graphics-wireframe .loader-steps li.active { text-shadow: var(--wire-glow); }
+.graphics-wireframe .loader-steps li.active::before { content: '> '; }
+
+/* Dialogs and sheets opened from the race view. */
+.graphics-wireframe .results-card, .graphics-wireframe .photo-panel, .graphics-wireframe .race-share-dialog { border-color: var(--hud-line-strong); background: var(--hud-surface-solid); box-shadow: none; }
+.graphics-wireframe .photo-frame { box-shadow: 0 0 0 1px var(--hud-line-strong); }
+.graphics-wireframe .embed-order, .graphics-wireframe.embed-shell .replay-dock { background: var(--hud-surface); backdrop-filter: none; box-shadow: none; }
+.graphics-wireframe.embed-shell .dock-play { border: 0; background: transparent; }

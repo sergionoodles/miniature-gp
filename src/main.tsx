@@ -7,6 +7,7 @@ import { resolveLegalPage } from './legalRoutes'
 import './styles.css'
 import './hud.css'
 import './embed.css'
+import './wireframeHud.css'
 
 const UMAMI_WEBSITE_ID = '6fbaf2d2-eb38-42b0-b041-298c4e0d1bd6'
 
