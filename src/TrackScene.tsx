@@ -358,7 +358,7 @@ export function TrackScene({ replay, weatherAt, timeRef, circuit, selectedDriver
         <button type="button" aria-label="Take a photo" disabled={error !== null} title="Take a photo of the race as framed" onClick={takePhoto}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3.2L9 5h6l1.8 2.5H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.6" /></svg>
         </button>
-        <button className="quality-button" type="button" aria-label={`Graphics: ${quality}`} data-quality={quality} title={QUALITY_TITLES[quality]} onClick={toggleQuality}>
+        <button className="quality-button" type="button" aria-label={`Graphics: ${quality}`} title={QUALITY_TITLES[quality]} onClick={toggleQuality}>
           <span aria-hidden="true">{QUALITY_LABELS[quality]}</span>
         </button>
         <button type="button" aria-label="Sound" aria-pressed={isSoundOn} title={isSoundOn ? 'Sound on: race music and effects. Select to mute.' : 'Sound off. Select to play race music and effects.'} onClick={onToggleSound}>

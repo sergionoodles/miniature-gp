@@ -5,7 +5,8 @@ import { createWireframeWater } from './wireframeWater'
 // The wireframe look redraws the realistic world in greys: every solid becomes a dark fill with
 // a pale outline, the ground a faint grid and the track a bright white outline, leaving the cars
 // as the only colour in the scene. Builders mark the surfaces that need their own treatment with
-// `userData.wireframeRole` on the mesh or material.
+// `userData.wireframeRole` on the mesh or material, and may hand over a ready-made outline as a
+// line-segment geometry in `userData.wireframeOutline`.
 type WireframeRole = 'ground' | 'water' | 'road' | 'road-paint' | 'runoff' | 'kerb'
 
 export const WIREFRAME_BACKGROUND = 0x030405
@@ -139,17 +140,26 @@ function bakeInstanceEdges(edges: THREE.BufferGeometry, mesh: THREE.InstancedMes
   return geometry
 }
 
-export function createEdgeLines(geometry: THREE.BufferGeometry, material: THREE.LineBasicMaterial) {
-  const lines = new THREE.LineSegments<THREE.BufferGeometry>(new THREE.EdgesGeometry(geometry, EDGE_ANGLE), material)
+function createLines(geometry: THREE.BufferGeometry, material: THREE.LineBasicMaterial) {
+  const lines = new THREE.LineSegments(geometry, material)
   // Lines would otherwise catch clicks a unit away and shadow the car under the pointer.
   lines.raycast = () => {}
   return lines
 }
 
+export function createEdgeLines(geometry: THREE.BufferGeometry, material: THREE.LineBasicMaterial) {
+  return createLines(new THREE.EdgesGeometry(geometry, EDGE_ANGLE), material)
+}
+
 function outline(mesh: THREE.Mesh, material: THREE.LineBasicMaterial) {
-  const lines = createEdgeLines(mesh.geometry, material)
-  if (mesh instanceof THREE.InstancedMesh) lines.geometry = bakeInstanceEdges(lines.geometry, mesh)
-  mesh.add(lines)
+  const supplied: unknown = mesh.userData.wireframeOutline
+  if (supplied instanceof THREE.BufferGeometry) {
+    mesh.add(createLines(supplied, material))
+    return
+  }
+  const edges = new THREE.EdgesGeometry(mesh.geometry, EDGE_ANGLE)
+  const geometry = mesh instanceof THREE.InstancedMesh ? bakeInstanceEdges(edges, mesh) : edges
+  mesh.add(createLines(geometry, material))
 }
 
 // The fill sits a little behind its outline, so coplanar edges always win the depth test.

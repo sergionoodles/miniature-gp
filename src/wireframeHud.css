@@ -40,7 +40,7 @@
 /* Controls: outlined until active, then filled in white. */
 .graphics-wireframe .rail-group { gap: 1px; padding: 2px; }
 .graphics-wireframe .rail-group button:hover:not(:disabled) { background: var(--hud-hover); }
-.graphics-wireframe .rail-group button[aria-pressed=true], .graphics-wireframe .quality-button:not([data-quality=standard]) { background: var(--hud-text); color: var(--hud-ink); box-shadow: var(--wire-glow); }
+.graphics-wireframe .rail-group button[aria-pressed=true] { background: var(--hud-text); color: var(--hud-ink); box-shadow: var(--wire-glow); }
 .graphics-wireframe .cta-button, .graphics-wireframe .unavailable-panel button { border: 1px solid var(--hud-text); background: var(--hud-surface-solid); color: var(--hud-text); font-weight: 700; letter-spacing: 2px; box-shadow: var(--wire-glow); }
 .graphics-wireframe .cta-button:hover, .graphics-wireframe .unavailable-panel button:hover { background: var(--hud-text); color: var(--hud-ink); }
 .graphics-wireframe .cta-button .play-icon { border-left-color: currentColor; }

@@ -1,8 +1,11 @@
 import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isRainLightOn } from './circuitWorld'
+import { distanceToTrack } from './pitLane'
+import { addPitLane } from './pitLaneMeshes'
 import type { WeatherState } from './raceWeather'
 import { createWireframeCarKit, neonLivery } from './wireframeCars'
+import { TRACK_WIDTH } from './trackside'
 import { restyleAsWireframe, sceneryLineColor } from './wireframeStyle'
 
 const weather = (overrides: Partial<WeatherState>): WeatherState => ({ rain: 0, wetness: 0, cloudCover: 0, airTemperature: 20, trackTemperature: 30, ...overrides })
@@ -69,6 +72,34 @@ describe('wireframe restyle', () => {
     const spectator = new THREE.Color()
     crowd.getColorAt(0, spectator)
     expect(spectator.r).toBe(spectator.b)
+  })
+})
+
+describe('wireframe pit lane', () => {
+  // A long loop whose bottom straight carries a pit lane that fans out from it and rejoins it.
+  const straight = (fromX: number, toX: number, z: number) => Array.from({ length: Math.abs(toX - fromX) + 1 }, (_, step) => new THREE.Vector3(fromX + Math.sign(toX - fromX) * step, 0, z))
+  const track = [...straight(-60, 60, 0), ...straight(60, -60, -40)]
+  const fanOut = (x: number) => 3.5 * THREE.MathUtils.smoothstep(Math.min(x + 24, 24 - x), 0, 12)
+  const path = Array.from({ length: 97 }, (_, step) => new THREE.Vector3(-24 + step / 2, 0, fanOut(-24 + step / 2)))
+
+  it('keeps the lane outline off the track where the entry and exit join it', () => {
+    const scene = new THREE.Scene()
+    const asphalt = new THREE.MeshStandardMaterial()
+    asphalt.userData.wireframeRole = 'road'
+    addPitLane(scene, { centerline: path, path, side: 1 }, track, { asphalt, lines: new THREE.MeshStandardMaterial(), verge: new THREE.MeshStandardMaterial() })
+
+    const lane = scene.children.find((child) => child instanceof THREE.Mesh && child.material === asphalt)
+    if (!lane) throw new Error('The pit lane has no asphalt.')
+
+    restyleAsWireframe(scene, 100)
+
+    const corners = lane.children.filter((child) => child instanceof THREE.LineSegments).flatMap((lines) => {
+      const positions = lines.geometry.getAttribute('position')
+      return Array.from({ length: positions.count }, (_, index) => new THREE.Vector3().fromBufferAttribute(positions, index))
+    })
+    const reaches = corners.map((corner) => distanceToTrack(track, corner))
+    expect(corners.length).toBeGreaterThan(0)
+    expect(Math.min(...reaches)).toBeGreaterThan(TRACK_WIDTH / 2 - 0.05)
   })
 })
 
