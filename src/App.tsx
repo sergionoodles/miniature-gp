@@ -575,7 +575,7 @@ export default function App() {
         </TimingTower>}
 
         <section className="race-stage" aria-label="Race simulation">
-          {replay && weatherAt && <TrackScene key={race.id} ref={sceneRef} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isSoundOn={isSoundOn} onToggleSound={toggleSound} quality={graphicsQuality} onQualityChange={changeGraphicsQuality} isEmbed={isEmbed} />}
+          {replay && weatherAt && <TrackScene key={race.id} ref={sceneRef} replay={replay} weatherAt={weatherAt} timeRef={timeRef} circuit={race.circuit} selectedDriver={selectedDriver} hoveredDriver={hoveredDriver} showStartingGrid={time === 0 && !isPlaying} stops={stops} onSelectDriver={setSelectedDriver} onSceneReady={setSceneReady} onPhoto={takePhoto} showCars={!unavailable} isOrbiting={isResultsOpen} isPlaying={isPlaying} isSoundOn={isSoundOn} onToggleSound={toggleSound} quality={graphicsQuality} onQualityChange={changeGraphicsQuality} isEmbed={isEmbed} />}
           {(!sceneReady || !hasShownLoaderSteps) && <div className="race-loader" role="status" aria-live="polite">
             <div className="loader-wheel" aria-hidden="true"><span /></div>
             <span className="loader-eyebrow">{error ? 'RACE DATA UNAVAILABLE' : 'PREPARING YOUR RACE'}</span>
