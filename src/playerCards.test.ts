@@ -13,9 +13,12 @@ const seasons = [
   { year: 2024, races: [{ circuit: 'Monte Carlo', grandPrix: 'Monaco Grand Prix', location: 'Monaco' }] },
 ]
 
-it('generates one crawlable static player page for each specific race', () => {
+it('generates standard and wireframe static player pages for every race', () => {
   const pages = createPlayerPages(template, seasons, { twitterSite: '@example' })
-  expect(pages.map((page) => page.fileName)).toEqual(['embed/2025/monza/index.html', 'embed/2024/monte-carlo/index.html'])
+  expect(pages.map((page) => page.fileName)).toEqual([
+    'embed/2025/monza/index.html', 'wireframe/2025/monza/index.html',
+    'embed/2024/monte-carlo/index.html', 'wireframe/2024/monte-carlo/index.html',
+  ])
   const html = pages[0].source
   expect(html).toContain('<title>Italian Grand Prix 2025 | Miniature GP</title>')
   expect(html).toContain('<meta name="twitter:card" content="player" />')
@@ -28,7 +31,7 @@ it('generates one crawlable static player page for each specific race', () => {
   expect(html).toContain('href="/assets/main-hash.css"')
   expect(html).toContain('<noscript>')
   expect(html).not.toMatch(/summary_large_image|Old title|Old description/)
-  expect(pages[1].source).toContain('https://minigp.cc/embed/2024/monte-carlo/')
+  expect(pages[2].source).toContain('https://minigp.cc/embed/2024/monte-carlo/')
 })
 
 it('escapes race text and uses the configured HTTPS host for every public URL', () => {
@@ -38,6 +41,10 @@ it('escapes race text and uses the configured HTTPS host for every public URL', 
   expect(pages[0].source).toContain('https://replays.example.com/embed/2025/sao-paulo/')
   expect(pages[0].source).not.toContain('https://minigp.cc')
   expect(pages[0].source).toContain('<meta name="twitter:site" content="@sergionoodle" />')
+  expect(pages[1].fileName).toBe('wireframe/2025/sao-paulo/index.html')
+  expect(pages[1].source).toContain('Race &lt;&quot;&amp;&#39;&gt;')
+  expect(pages[1].source).toContain('https://replays.example.com/wireframe/2025/sao-paulo/')
+  expect(pages[1].source).not.toContain('https://minigp.cc')
 })
 
 it('rejects insecure URLs, non-origin URLs and invalid X handles', () => {
@@ -45,4 +52,17 @@ it('rejects insecure URLs, non-origin URLs and invalid X handles', () => {
     expect(() => createPlayerPages(template, seasons, { siteUrl })).toThrow('HTTPS site origin')
   }
   expect(() => createPlayerPages(template, seasons, { twitterSite: 'example' })).toThrow('X handle')
+})
+
+it('bakes the wireframe path into crawler-visible player, canonical and Open Graph URLs', () => {
+  const html = createPlayerPages(template, seasons)[1].source
+  const playerUrl = 'https://minigp.cc/wireframe/2025/monza/'
+
+  expect(html).toContain(`<meta name="twitter:player" content="${playerUrl}" />`)
+  expect(html).toContain(`<link rel="canonical" href="${playerUrl}" />`)
+  expect(html).toContain(`<meta property="og:url" content="${playerUrl}" />`)
+  expect(html).toContain('<meta name="twitter:player:width" content="516" />')
+  expect(html).toContain('src="/assets/main-hash.js"')
+  expect(html).toContain('href="https://minigp.cc/2025/monza"')
+  expect(html).not.toContain('?mode=')
 })

@@ -46,7 +46,9 @@ const LOADER_STEPS = ['Loading race data…', 'Building 3D models…', 'Preparin
 // Matches the CSS breakpoint where the running order becomes a drawer over the circuit.
 const COMPACT_LAYOUT_QUERY = '(max-width: 760px)'
 export default function App() {
-  const isEmbed = routeFromPath(window.location.pathname)?.isEmbed ?? false
+  const route = routeFromPath(window.location.pathname)
+  const isEmbed = route?.isEmbed ?? false
+  const embedMode = route?.mode
   const [years, setYears] = useState([2026])
   const [year, setYear] = useState(() => routeFromPath(window.location.pathname)?.year ?? 2026)
   const [requestedCircuitSlug, setRequestedCircuitSlug] = useState(() => routeFromPath(window.location.pathname)?.circuitSlug ?? null)
@@ -77,7 +79,7 @@ export default function App() {
   const [isResultsOpen, setIsResultsOpen] = useState(false)
   const [followingSeasonRace, setFollowingSeasonRace] = useState<{ year: number; race: RaceOption } | null>(null)
   const [photo, setPhoto] = useState<{ capture: SceneCapture; hud: RacePhotoHud; resumesPlayback: boolean } | null>(null)
-  const [graphicsQuality, setGraphicsQuality] = useState<GraphicsQuality>(loadGraphicsQuality)
+  const [graphicsQuality, setGraphicsQuality] = useState<GraphicsQuality>(() => embedMode ?? loadGraphicsQuality())
   const timeRef = useRef(0)
   const previousNotificationTimeRef = useRef(0)
   const isPlayingRef = useRef(false)
@@ -113,7 +115,7 @@ export default function App() {
     setIsResultsOpen(false)
     setRaceId(nextRaceId)
     const nextRace = options.find((option) => option.id === nextRaceId)
-    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(nextYear, nextRace, isEmbed))
+    if (nextRace && updateHistory) window.history.pushState(null, '', racePath(nextYear, nextRace, isEmbed, embedMode))
   }
 
   useEffect(() => {
@@ -155,7 +157,7 @@ export default function App() {
         const nextRace = requestedRace ?? options[0]
         selectRace(nextRace.id, options, false)
         setLoadedCatalogKey(catalogKey)
-        window.history.replaceState(null, '', racePath(year, nextRace, isEmbed))
+        window.history.replaceState(null, '', racePath(year, nextRace, isEmbed, embedMode))
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return
@@ -174,7 +176,7 @@ export default function App() {
         setError(`Race data could not be loaded for ${year}. Please refresh to try again.`)
       })
     return () => controller.abort()
-  }, [year, requestedCircuitSlug, catalogKey, isEmbed])
+  }, [year, requestedCircuitSlug, catalogKey, isEmbed, embedMode])
 
   useEffect(() => {
     setPickerYear(year)

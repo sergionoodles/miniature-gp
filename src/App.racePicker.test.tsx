@@ -257,9 +257,15 @@ it('only changes the race and route after a Grand Prix is selected in the browse
   expect(pushState).toHaveBeenCalledTimes(1)
 })
 
-it('loads the exact embedded race and preserves its embed URL', async () => {
+it.each([
+  { path: '/embed/2025/monza/', search: '', savedQuality: 'standard', expectedQuality: 'standard' },
+  { path: '/wireframe/2025/monza/', search: '', savedQuality: 'high', expectedQuality: 'wireframe' },
+  { path: '/embed/2025/monza/', search: '?mode=wireframe', savedQuality: 'standard', expectedQuality: 'standard' },
+])('loads the exact embedded race and preserves its route ($path $search)', async ({ path, search, savedQuality, expectedQuality }) => {
   stubBrowser()
-  window.location.pathname = '/embed/2025/monza/'
+  window.location.pathname = path
+  window.location.search = search
+  vi.spyOn(window.localStorage, 'getItem').mockReturnValue(savedQuality)
   const requestedRace = race(2025, 'requested', 'Monza')
   const latestRace = { ...race(2025, 'latest', 'Lusail'), date: '2025-11-30' }
   const fetchData = vi.fn(async (url: string) => {
@@ -275,14 +281,53 @@ it('loads the exact embedded race and preserves its embed URL', async () => {
   expect(document.title).toContain('Monza 2025')
   expect(fetchData.mock.calls.map(([url]) => url)).toContain(requestedRace.url)
   expect(fetchData.mock.calls.map(([url]) => url)).not.toContain(latestRace.url)
-  expect(window.history.replaceState).toHaveBeenLastCalledWith(null, '', '/embed/2025/monza/')
+  expect(window.history.replaceState).toHaveBeenLastCalledWith(null, '', path)
+  expect(findComponent(tree, TrackScene)).toMatchObject({ quality: expectedQuality, isEmbed: true })
+  expect(window.localStorage.setItem).not.toHaveBeenCalled()
   expect(findSelect(tree, 'Season')).toBeUndefined()
   expect(findSelect(tree, 'Grand Prix')).toBeUndefined()
 })
 
-it.each([true, false])('automatically starts only embeds after the scene and loader are ready (embed: %s)', async (isEmbed) => {
+it('renders a wireframe embed even when preference storage is blocked', async () => {
   stubBrowser()
-  window.location.pathname = `${isEmbed ? '/embed' : ''}/2025/monza/`
+  window.location.pathname = '/wireframe/2025/monza/'
+  vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+    throw new DOMException('Storage blocked', 'SecurityError')
+  })
+  const requestedRace = race(2025, 'requested', 'Monza')
+  vi.stubGlobal('fetch', async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2025])
+    if (url === '/data/2025/races-2025.json') return Response.json([requestedRace])
+    return Response.json(replay)
+  })
+
+  const tree = await renderApp()
+
+  expect(findComponent(tree, TrackScene)).toMatchObject({ quality: 'wireframe' })
+  expect(window.localStorage.setItem).not.toHaveBeenCalled()
+})
+
+it('uses the saved graphics preference on full replay URLs with an embed mode query', async () => {
+  stubBrowser()
+  window.location.pathname = '/2025/monza'
+  window.location.search = '?mode=wireframe'
+  vi.spyOn(window.localStorage, 'getItem').mockReturnValue('standard')
+  const requestedRace = race(2025, 'requested', 'Monza')
+  vi.stubGlobal('fetch', async (url: string) => {
+    if (url === '/data/years.json') return Response.json([2025])
+    if (url === '/data/2025/races-2025.json') return Response.json([requestedRace])
+    return Response.json(replay)
+  })
+
+  const tree = await renderApp()
+
+  expect(findComponent(tree, TrackScene)).toMatchObject({ quality: 'standard', isEmbed: false })
+})
+
+it.each(['/embed', '/wireframe', ''])('automatically starts only embeds after the scene and loader are ready (%s)', async (prefix) => {
+  stubBrowser()
+  const isEmbed = Boolean(prefix)
+  window.location.pathname = `${prefix}/2025/monza/`
   const requestedRace = race(2025, 'requested', 'Monza')
   vi.stubGlobal('fetch', async (url: string) => {
     if (url === '/data/years.json') return Response.json([2025])

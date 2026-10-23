@@ -6,6 +6,7 @@ import { racePath, routeFromPath } from '../src/raceRoutes.ts'
 const PLAYER_SIZE = 516
 const DEFAULT_SITE_URL = 'https://minigp.cc'
 const DEFAULT_TWITTER_SITE = '@sergionoodle'
+const EMBED_MODES = ['default', 'wireframe']
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -26,8 +27,8 @@ export function createPlayerPages(template, seasons, options = {}) {
     .replace(/\s*<meta\s+(?:name|property)="(?:twitter:[^"]+|og:[^"]+|description)"[^>]*>/g, '')
     .replace(/\s*<link\s+rel="canonical"[^>]*>/g, '')
 
-  return seasons.flatMap(({ year, races }) => races.map((race) => {
-    const embedPath = racePath(year, race, true)
+  return seasons.flatMap(({ year, races }) => races.flatMap((race) => EMBED_MODES.map((mode) => {
+    const embedPath = racePath(year, race, true, mode)
     const playerUrl = new URL(embedPath, site).href
     const replayUrl = new URL(racePath(year, race), site).href
     const title = `${race.grandPrix} ${year} | Miniature GP`
@@ -56,7 +57,7 @@ export function createPlayerPages(template, seasons, options = {}) {
       .replace('</head>', () => `    ${metadata}\n  </head>`)
       .replace('<div id="root"></div>', () => `<div id="root"></div>\n    <noscript><p>${escapeHtml(title)}. Enable JavaScript for the interactive replay, or <a href="${escapeHtml(replayUrl)}" target="_blank" rel="noopener noreferrer">open Miniature GP</a>.</p></noscript>`)
     return { fileName: `${embedPath.slice(1)}index.html`, source }
-  }))
+  })))
 }
 
 function readSeasons(publicDirectory) {
@@ -80,13 +81,13 @@ export function playerCards(options = {}) {
     configureServer(server) {
       server.middlewares.use(async (request, response, next) => {
         const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
-        if (!pathname.startsWith('/embed/')) return next()
+        if (!pathname.startsWith('/embed/') && !pathname.startsWith('/wireframe/')) return next()
         try {
           const route = routeFromPath(pathname)
           const template = readFileSync(join(rootDirectory, 'index.html'), 'utf8')
           const seasons = readSeasons(publicDirectory)
           const page = route && createPlayerPages(template, seasons, options)
-            .find((candidate) => candidate.fileName === `${racePath(route.year, { circuit: route.circuitSlug }, true).slice(1)}index.html`)
+            .find((candidate) => candidate.fileName === `${racePath(route.year, { circuit: route.circuitSlug }, true, route.mode).slice(1)}index.html`)
           if (!page) {
             response.statusCode = 404
             response.setHeader('Content-Type', 'text/html; charset=utf-8')
