@@ -24,6 +24,7 @@ START_TELEMETRY_DRIVER_COUNT = 5
 START_TELEMETRY_LEAD_SECONDS = 30
 START_TELEMETRY_WINDOW_SECONDS = 900
 START_INSTRUCTION_WINDOW_SECONDS = 600
+PRE_SESSION_CONTROL_SECONDS = 60 * 60
 START_CONTROL_MESSAGES = (
     "DELAYED START", "FORMATION LAP", "STARTING PROCEDURE", "START ORDER:",
     "RACE WILL START", "SAFETY CAR LIGHTS", "STANDING START", "ROLLING START", "RACE START",
@@ -244,7 +245,10 @@ def select_track(laps, session_key, preferred=None):
 
 def build_replay(session, output, controls=None, preferred_track=None, total_laps=None):
     session_key = session["session_key"]
-    controls = sorted(controls if controls is not None else fetch("race_control", session_key=session_key),
+    earliest_control = milliseconds(session["date_start"]) - PRE_SESSION_CONTROL_SECONDS * 1000
+    session_controls = controls if controls is not None else fetch("race_control", session_key=session_key)
+    # Keep pre-start instructions, while excluding stale messages from earlier sessions.
+    controls = sorted((row for row in session_controls if milliseconds(row["date"]) >= earliest_control),
                       key=lambda row: milliseconds(row["date"]))
     starts = [row for row in controls if row["category"] == "SessionStatus" and row["message"] == "SESSION STARTED"]
     finishes = [row for row in controls if row["category"] == "SessionStatus" and row["message"] == "SESSION FINISHED"]

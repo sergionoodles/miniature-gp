@@ -1,5 +1,6 @@
 import unittest
 import json
+import math
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -179,6 +180,72 @@ class ReplayOutputTest(unittest.TestCase):
             directory = Path(temporary)
             self.assertEqual(build_race_replay.resolve_replay_output({"session_key": 11731, "year": 2026}, directory),
                              directory / "2026/race-11731-2026.json")
+
+
+class RaceClockImportTest(unittest.TestCase):
+    def setUp(self):
+        self.start = datetime(2026, 11, 1, 20, 3, 25, tzinfo=timezone.utc)
+        self.session = {"session_key": 11404, "meeting_key": 1298, "session_name": "Race",
+                        "date_start": "2026-11-01T20:00:00+00:00", "gmt_offset": "-06:00:00"}
+        self.controls = [self.control(0, "SESSION STARTED"),
+                         self.control(90, "SESSION ABORTED"),
+                         self.control(120, "SESSION STARTED"),
+                         self.control(200, "SESSION FINISHED")]
+
+    def date(self, seconds):
+        return (self.start + timedelta(seconds=seconds)).isoformat()
+
+    def control(self, seconds, message, category="SessionStatus"):
+        return {"date": self.date(seconds), "category": category, "message": message}
+
+    def build(self, controls):
+        locations = [{"date": self.date(-86_400), "x": 10, "y": 20}] + [
+            {"date": self.date(0.25 + index / 2),
+             "x": 1000 * math.cos(index / 159 * math.tau),
+             "y": 1000 * math.sin(index / 159 * math.tau)} for index in range(160)]
+        responses = {
+            "sessions": [{"session_key": 11403, "meeting_key": 1298, "session_name": "Qualifying",
+                          "date_start": self.date(-172_800)}],
+            "starting_grid": [{"driver_number": 1, "position": 1}],
+            "drivers": [{"driver_number": 1, "full_name": "Test Driver", "name_acronym": "TST",
+                         "team_name": "McLaren", "team_colour": "F47600"}],
+            "laps": [{"date_start": self.date(0), "driver_number": 1, "lap_number": 1,
+                      "lap_duration": 80}],
+            "location": locations,
+            "position": [{"date": self.date(-1), "driver_number": 1, "position": 1},
+                         {"date": self.date(10), "driver_number": 1, "position": 1}],
+            "pit": [], "weather": [], "stints": [], "overtakes": [], "car_data": [],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "mexico.json"
+            with patch("build_race_replay.fetch", side_effect=lambda endpoint, **filters: responses[endpoint]):
+                build_race_replay.build_replay(self.session, output, controls)
+            return json.loads(output.read_text())
+
+    def test_ignores_previous_day_controls_and_starts_cars_at_the_race(self):
+        controls = [self.control(-86_400, "SESSION STARTED"),
+                    self.control(-85_000, "SESSION FINISHED"),
+                    self.control(-300, "FORMATION LAP", "Other"), *self.controls]
+        replay = self.build(controls)
+        self.assertEqual(replay["start"], self.date(0))
+        self.assertEqual(replay["duration"], 200)
+        self.assertEqual(replay["locations"]["1"][0][0], 0.8)
+        self.assertEqual(replay["positions"][0], [0, 1, 1])
+        self.assertEqual(replay["laps"], [[0, 1, 1]])
+        statuses = [row for row in replay["raceControl"] if row[1] == "SessionStatus"]
+        self.assertEqual([row[0] for row in statuses], [0, 90, 120, 200])
+        self.assertIn([-300, "Other", None, "FORMATION LAP"], replay["raceControl"])
+
+    def test_preserves_a_delayed_start_and_its_restart(self):
+        self.session = {**self.session, "date_start": "2026-11-01T18:00:00+00:00"}
+        replay = self.build(self.controls)
+        self.assertEqual(replay["start"], self.date(0))
+        self.assertEqual(replay["duration"], 200)
+
+    def test_rejects_a_race_without_a_start_in_its_session(self):
+        controls = [self.control(-86_400, "SESSION STARTED"), self.controls[-1]]
+        with self.assertRaisesRegex(RuntimeError, "Race start or finish is missing"):
+            self.build(controls)
 
 
 if __name__ == "__main__":
