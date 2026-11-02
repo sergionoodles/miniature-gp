@@ -31,7 +31,7 @@ const RAIN_LIGHT_COLOR = 0xff2a1f
 const RAIN_LIGHT_BOOST = 8
 
 function accentFor(driver: Driver, team: THREE.Color) {
-  const name = driver.team.toLowerCase()
+  const name = driver.team?.toLowerCase() ?? ''
   const known = TEAM_ACCENTS.find(([pattern]) => pattern.test(name))
   if (known) return new THREE.Color(known[1])
   return team.getHSL({ h: 0, s: 0, l: 0 }).l > 0.5 ? CARBON.clone() : new THREE.Color(0xf2f4f7)
